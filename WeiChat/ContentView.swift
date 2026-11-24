@@ -239,8 +239,6 @@ struct AIAssistantView: View {
                 ScrollView {
                     VStack(spacing: 20) {
 
-                        // AI 助手介绍
-
                         VStack(spacing: 14) {
                             Image(systemName: "sparkles")
                                 .font(.system(size: 48))
@@ -268,8 +266,6 @@ struct AIAssistantView: View {
                             .regular,
                             in: RoundedRectangle(cornerRadius: 24)
                         )
-
-                        // 功能介绍
 
                         VStack(alignment: .leading, spacing: 16) {
                             Text("未来可以使用的功能")
@@ -306,8 +302,6 @@ struct AIAssistantView: View {
                             in: RoundedRectangle(cornerRadius: 22)
                         )
 
-                        // 图片预览
-
                         if let data = selectedImageData,
                            let image = UIImage(data: data) {
                             VStack(alignment: .leading, spacing: 8) {
@@ -339,8 +333,6 @@ struct AIAssistantView: View {
                     }
                     .padding()
                 }
-
-                // 输入区域
 
                 VStack(spacing: 8) {
                     HStack(spacing: 12) {
@@ -395,7 +387,6 @@ struct AIAssistantView: View {
             .background(Color(.systemGroupedBackground))
             .navigationTitle("AI 助手")
             .navigationBarTitleDisplayMode(.inline)
-
             .onChange(of: selectedPhoto) { _, newValue in
                 guard let newValue else { return }
 
@@ -407,7 +398,6 @@ struct AIAssistantView: View {
                     isLoadingImage = false
                 }
             }
-
             .alert("AI 服务尚未接入", isPresented: $showAlert) {
                 Button("知道了", role: .cancel) {}
             } message: {
@@ -756,16 +746,24 @@ struct ChatDetailView: View {
         .task {
             do {
                 currentUserID = try await SupabaseManager.shared.currentUserID()
+            } catch is CancellationError {
+                return
             } catch {
+                guard !Task.isCancelled else { return }
                 errorMessage = error.localizedDescription
                 showError = true
+                return
             }
 
             while !Task.isCancelled {
                 await loadMessages()
 
+                guard !Task.isCancelled else { break }
+
                 do {
                     try await Task.sleep(nanoseconds: 3_000_000_000)
+                } catch is CancellationError {
+                    break
                 } catch {
                     break
                 }
@@ -783,8 +781,14 @@ struct ChatDetailView: View {
             let result = try await SupabaseManager.shared.fetchMessages(
                 conversationID: conversationID
             )
+
+            guard !Task.isCancelled else { return }
             messages = result
+
+        } catch is CancellationError {
+            return
         } catch {
+            guard !Task.isCancelled else { return }
             errorMessage = error.localizedDescription
             showError = true
         }
@@ -1029,16 +1033,28 @@ struct ProfileView: View {
         }
     }
 
+    // MARK: 读取资料（处理任务取消）
+
     private func loadProfile() async {
         do {
-            profile = try await SupabaseManager.shared.fetchMyProfile()
+            let result = try await SupabaseManager.shared.fetchMyProfile()
+
+            guard !Task.isCancelled else { return }
+            profile = result
+
+        } catch is CancellationError {
+            return
         } catch {
+            guard !Task.isCancelled else { return }
             alertMessage = error.localizedDescription
             showAlert = true
         }
 
+        guard !Task.isCancelled else { return }
         isLoading = false
     }
+
+    // MARK: 上传头像
 
     private func uploadSelectedPhoto(_ item: PhotosPickerItem) async {
         isUploading = true
@@ -1074,6 +1090,8 @@ struct ProfileView: View {
             alertMessage = "头像上传成功！"
             showAlert = true
 
+        } catch is CancellationError {
+            // 正常取消，不显示错误弹窗
         } catch {
             alertMessage = "头像上传失败：\(error.localizedDescription)"
             showAlert = true
