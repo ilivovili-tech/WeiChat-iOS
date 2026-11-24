@@ -208,6 +208,12 @@ struct MainTabView: View {
                     Text("发现")
                 }
 
+            AIAssistantView()
+                .tabItem {
+                    Image(systemName: "sparkles")
+                    Text("AI 助手")
+                }
+
             ProfileView(onLogout: onLogout)
                 .tabItem {
                     Image(systemName: "person.fill")
@@ -215,6 +221,221 @@ struct MainTabView: View {
                 }
         }
         .tint(.green)
+    }
+}
+
+// MARK: - AI 助手
+
+struct AIAssistantView: View {
+    @State private var message = ""
+    @State private var selectedPhoto: PhotosPickerItem?
+    @State private var selectedImageData: Data?
+    @State private var isLoadingImage = false
+    @State private var showAlert = false
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 0) {
+                ScrollView {
+                    VStack(spacing: 20) {
+
+                        // AI 助手介绍
+
+                        VStack(spacing: 14) {
+                            Image(systemName: "sparkles")
+                                .font(.system(size: 48))
+                                .foregroundStyle(.green)
+
+                            Text("WeiChat AI 助手")
+                                .font(.title2.bold())
+
+                            Text("智能聊天、图片理解与创作")
+                                .foregroundStyle(.secondary)
+
+                            Text("AI 服务尚未连接")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.orange)
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 7)
+                                .background(
+                                    Color.orange.opacity(0.12),
+                                    in: Capsule()
+                                )
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 35)
+                        .glassEffect(
+                            .regular,
+                            in: RoundedRectangle(cornerRadius: 24)
+                        )
+
+                        // 功能介绍
+
+                        VStack(alignment: .leading, spacing: 16) {
+                            Text("未来可以使用的功能")
+                                .font(.headline)
+
+                            featureRow(
+                                "智能聊天",
+                                detail: "回答问题、交流想法、连续对话",
+                                icon: "bubble.left.and.bubble.right"
+                            )
+
+                            featureRow(
+                                "图片理解",
+                                detail: "发送照片，让 AI 分析图片内容",
+                                icon: "photo"
+                            )
+
+                            featureRow(
+                                "图片创作",
+                                detail: "根据文字描述生成图片",
+                                icon: "paintbrush"
+                            )
+
+                            featureRow(
+                                "文件分析",
+                                detail: "阅读、总结和整理文件",
+                                icon: "doc.text"
+                            )
+                        }
+                        .padding(18)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .glassEffect(
+                            .regular,
+                            in: RoundedRectangle(cornerRadius: 22)
+                        )
+
+                        // 图片预览
+
+                        if let data = selectedImageData,
+                           let image = UIImage(data: data) {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("已选择图片（仅本地预览）")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+
+                                Image(uiImage: image)
+                                    .resizable()
+                                    .scaledToFit()
+                                    .frame(maxHeight: 220)
+                                    .clipShape(
+                                        RoundedRectangle(cornerRadius: 16)
+                                    )
+
+                                Button("移除图片") {
+                                    selectedImageData = nil
+                                    selectedPhoto = nil
+                                }
+                                .foregroundStyle(.red)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(14)
+                            .glassEffect(
+                                .regular,
+                                in: RoundedRectangle(cornerRadius: 20)
+                            )
+                        }
+                    }
+                    .padding()
+                }
+
+                // 输入区域
+
+                VStack(spacing: 8) {
+                    HStack(spacing: 12) {
+                        PhotosPicker(
+                            selection: $selectedPhoto,
+                            matching: .images
+                        ) {
+                            Image(systemName: "plus.circle")
+                                .font(.system(size: 25))
+                                .foregroundStyle(.green)
+                        }
+                        .disabled(isLoadingImage)
+
+                        TextField(
+                            "向 AI 助手提问...",
+                            text: $message,
+                            axis: .vertical
+                        )
+                        .lineLimit(1...4)
+
+                        Button {
+                            showAlert = true
+                        } label: {
+                            Image(systemName: "arrow.up")
+                                .font(.system(size: 17, weight: .bold))
+                                .foregroundStyle(.white)
+                                .frame(width: 40, height: 40)
+                                .background(.green, in: Circle())
+                        }
+                        .disabled(
+                            message.trimmingCharacters(
+                                in: .whitespacesAndNewlines
+                            ).isEmpty && selectedImageData == nil
+                        )
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 9)
+                    .glassEffect(
+                        .regular,
+                        in: RoundedRectangle(cornerRadius: 25)
+                    )
+
+                    Text("目前仅支持本地界面预览，AI 服务接入后才能发送并获得回答。")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.horizontal)
+                .padding(.top, 10)
+                .padding(.bottom, 8)
+                .background(.bar)
+            }
+            .background(Color(.systemGroupedBackground))
+            .navigationTitle("AI 助手")
+            .navigationBarTitleDisplayMode(.inline)
+
+            .onChange(of: selectedPhoto) { _, newValue in
+                guard let newValue else { return }
+
+                Task {
+                    isLoadingImage = true
+                    selectedImageData = try? await newValue.loadTransferable(
+                        type: Data.self
+                    )
+                    isLoadingImage = false
+                }
+            }
+
+            .alert("AI 服务尚未接入", isPresented: $showAlert) {
+                Button("知道了", role: .cancel) {}
+            } message: {
+                Text("你的文字和图片目前不会发送到 AI，也不会产生模拟回答。等接入真正的 AI 服务后，就可以开始聊天和图片分析。")
+            }
+        }
+    }
+
+    private func featureRow(
+        _ title: String,
+        detail: String,
+        icon: String
+    ) -> some View {
+        HStack(spacing: 13) {
+            Image(systemName: icon)
+                .font(.system(size: 22))
+                .foregroundStyle(.green)
+                .frame(width: 35)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+
+                Text(detail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
     }
 }
 
@@ -639,7 +860,6 @@ struct DiscoverView: View {
 
 // MARK: - 我的
 
-
 struct ProfileView: View {
     var onLogout: () -> Void
 
@@ -655,8 +875,6 @@ struct ProfileView: View {
     var body: some View {
         NavigationStack {
             List {
-                // MARK: 个人资料
-
                 Section {
                     HStack(spacing: 18) {
                         avatarView
@@ -701,8 +919,6 @@ struct ProfileView: View {
                     .disabled(isUploading)
                 }
 
-                // MARK: 个人功能
-
                 Section {
                     Label("服务", systemImage: "creditcard")
                     Label("收藏", systemImage: "star")
@@ -721,8 +937,6 @@ struct ProfileView: View {
 
                     Label("设置", systemImage: "gearshape")
                 }
-
-                // MARK: 退出登录
 
                 Section {
                     Button(role: .destructive) {
@@ -795,8 +1009,6 @@ struct ProfileView: View {
         }
     }
 
-    // MARK: 头像显示
-
     @ViewBuilder
     private var avatarView: some View {
         if let urlString = profile?.avatar_url,
@@ -817,8 +1029,6 @@ struct ProfileView: View {
         }
     }
 
-    // MARK: 读取资料
-
     private func loadProfile() async {
         do {
             profile = try await SupabaseManager.shared.fetchMyProfile()
@@ -829,8 +1039,6 @@ struct ProfileView: View {
 
         isLoading = false
     }
-
-    // MARK: 上传头像
 
     private func uploadSelectedPhoto(_ item: PhotosPickerItem) async {
         isUploading = true
