@@ -7,6 +7,33 @@ import MusicKit
 import AVFoundation
 import UniformTypeIdentifiers
 
+// MARK: - 主入口
+
+struct ContentView: View {
+    @State private var isLoggedIn = false
+    @State private var checkingSession = true
+
+    var body: some View {
+        Group {
+            if checkingSession {
+                ProgressView("正在连接 WeiChat...")
+            } else if isLoggedIn {
+                MainTabView {
+                    isLoggedIn = false
+                }
+            } else {
+                LoginView {
+                    isLoggedIn = true
+                }
+            }
+        }
+        .task {
+            isLoggedIn = await SupabaseManager.shared.hasSession()
+            checkingSession = false
+        }
+    }
+}
+
 // MARK: - 主界面
 
 struct MainTabView: View {
@@ -206,47 +233,6 @@ struct LoginView: View {
     }
 }
 
-// MARK: - 主界面
-
-struct MainTabView: View {
-    var onLogout: () -> Void
-
-    var body: some View {
-        TabView {
-            ChatListView()
-                .tabItem {
-                    Image(systemName: "message.fill")
-                    Text("微信")
-                }
-
-            ContactsView()
-                .tabItem {
-                    Image(systemName: "person.2.fill")
-                    Text("通讯录")
-                }
-
-            DiscoverView()
-                .tabItem {
-                    Image(systemName: "safari")
-                    Text("发现")
-                }
-
-            AIAssistantView()
-                .tabItem {
-                    Image(systemName: "sparkles")
-                    Text("AI 助手")
-                }
-
-            ProfileView(onLogout: onLogout)
-                .tabItem {
-                    Image(systemName: "person.fill")
-                    Text("我")
-                }
-        }
-        .tint(.green)
-    }
-}
-
 // MARK: - AI 助手
 
 struct AIChatMessage: Identifiable {
@@ -256,9 +242,7 @@ struct AIChatMessage: Identifiable {
 }
 
 struct AIAssistantView: View {
-
     @StateObject private var ai = WeiChatAIManager()
-
     @State private var messages: [AIChatMessage] = []
     @State private var message = ""
 
@@ -420,10 +404,7 @@ struct AIAssistantView: View {
         }
 
         messages.append(
-            AIChatMessage(
-                text: text,
-                isUser: true
-            )
+            AIChatMessage(text: text, isUser: true)
         )
 
         message = ""
@@ -433,10 +414,7 @@ struct AIAssistantView: View {
                 let answer = try await ai.send(text: text)
 
                 messages.append(
-                    AIChatMessage(
-                        text: answer,
-                        isUser: false
-                    )
+                    AIChatMessage(text: answer, isUser: false)
                 )
             } catch {
                 messages.append(
@@ -1270,7 +1248,6 @@ struct WeiMusicView: View {
     var body: some View {
         NavigationStack {
             List {
-                // Apple Music 授权
                 Section {
                     HStack(spacing: 12) {
                         Image(systemName: "apple.logo")
@@ -1301,7 +1278,6 @@ struct WeiMusicView: View {
                     .padding(.vertical, 6)
                 }
 
-                // 在线搜索
                 Section("在线音乐") {
                     HStack {
                         Image(systemName: "magnifyingglass")
@@ -1341,7 +1317,6 @@ struct WeiMusicView: View {
                     }
                 }
 
-                // 音乐资料库
                 Section {
                     HStack {
                         Text("我的音乐资料库")
@@ -1369,7 +1344,6 @@ struct WeiMusicView: View {
                     }
                 }
 
-                // 本地音乐
                 Section("iPhone 本地音乐") {
                     HStack {
                         VStack(alignment: .leading, spacing: 5) {
@@ -1440,7 +1414,6 @@ struct WeiMusicView: View {
                     }
                 }
 
-                // 正在播放
                 if !currentLocalSong.isEmpty {
                     Section("正在播放") {
                         HStack(spacing: 12) {
@@ -1546,8 +1519,6 @@ struct WeiMusicView: View {
         }
     }
 
-    // MARK: Apple Music 授权
-
     private func requestAuthorization() {
         Task {
             let status = await MusicAuthorization.request()
@@ -1561,8 +1532,6 @@ struct WeiMusicView: View {
             }
         }
     }
-
-    // MARK: 在线搜索
 
     private func searchMusic() {
         let keyword = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1599,8 +1568,6 @@ struct WeiMusicView: View {
         }
     }
 
-    // MARK: 音乐资料库
-
     private func loadLibrary() {
         guard authorizationStatus == .authorized else { return }
 
@@ -1622,8 +1589,6 @@ struct WeiMusicView: View {
         }
     }
 
-    // MARK: 播放 Apple Music
-
     private func playSong(_ song: Song) {
         guard authorizationStatus == .authorized else {
             alertMessage = "请先授权 Apple Music。"
@@ -1641,8 +1606,6 @@ struct WeiMusicView: View {
             }
         }
     }
-
-    // MARK: 歌曲列表
 
     @ViewBuilder
     private func songRow(_ song: Song) -> some View {
@@ -1684,8 +1647,6 @@ struct WeiMusicView: View {
         }
         .buttonStyle(.plain)
     }
-
-    // MARK: 导入本地音频
 
     private func importAudioFiles(_ result: Result<[URL], Error>) {
         switch result {
@@ -1759,8 +1720,6 @@ struct WeiMusicView: View {
         }
     }
 
-    // MARK: 读取本地音乐
-
     private func loadLocalFiles() {
         guard let documents = FileManager.default.urls(
             for: .documentDirectory,
@@ -1806,8 +1765,6 @@ struct WeiMusicView: View {
             showAlert = true
         }
     }
-
-    // MARK: 本地音乐播放
 
     private func playLocalFile(at index: Int) {
         guard localFiles.indices.contains(index) else { return }
@@ -1867,8 +1824,6 @@ struct WeiMusicView: View {
 
         playLocalFile(at: nextIndex)
     }
-
-    // MARK: 删除本地音乐
 
     private func deleteLocalFile(at index: Int) {
         guard localFiles.indices.contains(index) else { return }
