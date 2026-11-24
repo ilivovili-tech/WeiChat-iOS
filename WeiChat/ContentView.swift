@@ -226,204 +226,207 @@ struct MainTabView: View {
 
 // MARK: - AI 助手
 
+struct AIChatMessage: Identifiable {
+    let id = UUID()
+    let text: String
+    let isUser: Bool
+}
+
 struct AIAssistantView: View {
+
+    @StateObject private var ai = WeiChatAIManager()
+
+    @State private var messages: [AIChatMessage] = []
     @State private var message = ""
-    @State private var selectedPhoto: PhotosPickerItem?
-    @State private var selectedImageData: Data?
-    @State private var isLoadingImage = false
-    @State private var showAlert = false
 
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                ScrollView {
-                    VStack(spacing: 20) {
 
-                        VStack(spacing: 14) {
-                            Image(systemName: "sparkles")
-                                .font(.system(size: 48))
-                                .foregroundStyle(.green)
+                // AI 状态
+                HStack(spacing: 8) {
+                    Image(systemName: "sparkles")
+                        .foregroundStyle(.green)
 
-                            Text("WeiChat AI 助手")
-                                .font(.title2.bold())
+                    Text(ai.status)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
 
-                            Text("智能聊天、图片理解与创作")
-                                .foregroundStyle(.secondary)
+                    Spacer()
 
-                            Text("AI 服务尚未连接")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.orange)
-                                .padding(.horizontal, 14)
-                                .padding(.vertical, 7)
-                                .background(
-                                    Color.orange.opacity(0.12),
-                                    in: Capsule()
-                                )
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 35)
-                        .glassEffect(
-                            .regular,
-                            in: RoundedRectangle(cornerRadius: 24)
-                        )
+                    Circle()
+                        .fill(ai.isAvailable ? Color.green : Color.orange)
+                        .frame(width: 8, height: 8)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
 
-                        VStack(alignment: .leading, spacing: 16) {
-                            Text("未来可以使用的功能")
-                                .font(.headline)
+                // 聊天内容
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        if messages.isEmpty {
+                            VStack(spacing: 15) {
+                                Image(systemName: "sparkles")
+                                    .font(.system(size: 55))
+                                    .foregroundStyle(.green)
 
-                            featureRow(
-                                "智能聊天",
-                                detail: "回答问题、交流想法、连续对话",
-                                icon: "bubble.left.and.bubble.right"
-                            )
+                                Text("你好，我是 WeiChat AI")
+                                    .font(.title2.bold())
 
-                            featureRow(
-                                "图片理解",
-                                detail: "发送照片，让 AI 分析图片内容",
-                                icon: "photo"
-                            )
-
-                            featureRow(
-                                "图片创作",
-                                detail: "根据文字描述生成图片",
-                                icon: "paintbrush"
-                            )
-
-                            featureRow(
-                                "文件分析",
-                                detail: "阅读、总结和整理文件",
-                                icon: "doc.text"
-                            )
-                        }
-                        .padding(18)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .glassEffect(
-                            .regular,
-                            in: RoundedRectangle(cornerRadius: 22)
-                        )
-
-                        if let data = selectedImageData,
-                           let image = UIImage(data: data) {
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("已选择图片（仅本地预览）")
-                                    .font(.caption)
+                                Text("有什么问题都可以问我。")
                                     .foregroundStyle(.secondary)
 
-                                Image(uiImage: image)
-                                    .resizable()
-                                    .scaledToFit()
-                                    .frame(maxHeight: 220)
-                                    .clipShape(
-                                        RoundedRectangle(cornerRadius: 16)
-                                    )
-
-                                Button("移除图片") {
-                                    selectedImageData = nil
-                                    selectedPhoto = nil
-                                }
-                                .foregroundStyle(.red)
+                                Text("回答由设备上的 Apple 本地模型生成。")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
                             }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(14)
-                            .glassEffect(
-                                .regular,
-                                in: RoundedRectangle(cornerRadius: 20)
-                            )
+                            .frame(maxWidth: .infinity)
+                            .padding(.top, 100)
+                        }
+
+                        LazyVStack(spacing: 16) {
+                            ForEach(messages) { item in
+                                HStack {
+                                    if item.isUser {
+                                        Spacer(minLength: 45)
+
+                                        Text(item.text)
+                                            .padding(13)
+                                            .foregroundStyle(.primary)
+                                            .background(
+                                                Color.green.opacity(0.20),
+                                                in: RoundedRectangle(cornerRadius: 18)
+                                            )
+                                    } else {
+                                        Image(systemName: "sparkles")
+                                            .foregroundStyle(.green)
+                                            .padding(.top, 8)
+
+                                        Text(item.text)
+                                            .padding(13)
+                                            .frame(
+                                                maxWidth: .infinity,
+                                                alignment: .leading
+                                            )
+                                            .background(
+                                                Color.gray.opacity(0.13),
+                                                in: RoundedRectangle(cornerRadius: 18)
+                                            )
+
+                                        Spacer(minLength: 20)
+                                    }
+                                }
+                                .id(item.id)
+                            }
+
+                            if ai.isResponding {
+                                HStack {
+                                    ProgressView()
+                                    Text("AI 正在思考...")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                    Spacer()
+                                }
+                                .padding(.leading, 8)
+                            }
+                        }
+                        .padding()
+                    }
+                    .onChange(of: messages.count) {
+                        if let last = messages.last {
+                            withAnimation {
+                                proxy.scrollTo(last.id, anchor: .bottom)
+                            }
                         }
                     }
-                    .padding()
                 }
 
-                VStack(spacing: 8) {
-                    HStack(spacing: 12) {
-                        PhotosPicker(
-                            selection: $selectedPhoto,
-                            matching: .images
-                        ) {
-                            Image(systemName: "plus.circle")
-                                .font(.system(size: 25))
-                                .foregroundStyle(.green)
-                        }
-                        .disabled(isLoadingImage)
+                // 输入框
+                HStack(spacing: 12) {
+                    TextField(
+                        "向 WeiChat AI 提问...",
+                        text: $message,
+                        axis: .vertical
+                    )
+                    .lineLimit(1...4)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
 
-                        TextField(
-                            "向 AI 助手提问...",
-                            text: $message,
-                            axis: .vertical
-                        )
-                        .lineLimit(1...4)
-
-                        Button {
-                            showAlert = true
-                        } label: {
+                    Button {
+                        sendMessage()
+                    } label: {
+                        if ai.isResponding {
+                            ProgressView()
+                                .frame(width: 42, height: 42)
+                        } else {
                             Image(systemName: "arrow.up")
-                                .font(.system(size: 17, weight: .bold))
+                                .font(.system(size: 18, weight: .bold))
                                 .foregroundStyle(.white)
-                                .frame(width: 40, height: 40)
+                                .frame(width: 42, height: 42)
                                 .background(.green, in: Circle())
                         }
-                        .disabled(
-                            message.trimmingCharacters(
-                                in: .whitespacesAndNewlines
-                            ).isEmpty && selectedImageData == nil
-                        )
                     }
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 9)
-                    .glassEffect(
-                        .regular,
-                        in: RoundedRectangle(cornerRadius: 25)
+                    .disabled(
+                        ai.isResponding ||
+                        message.trimmingCharacters(
+                            in: .whitespacesAndNewlines
+                        ).isEmpty
                     )
-
-                    Text("目前仅支持本地界面预览，AI 服务接入后才能发送并获得回答。")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
                 }
+                .padding(7)
+                .glassEffect(
+                    .regular,
+                    in: RoundedRectangle(cornerRadius: 25)
+                )
                 .padding(.horizontal)
-                .padding(.top, 10)
-                .padding(.bottom, 8)
+                .padding(.vertical, 10)
                 .background(.bar)
             }
             .background(Color(.systemGroupedBackground))
-            .navigationTitle("AI 助手")
+            .navigationTitle("WeiChat AI")
             .navigationBarTitleDisplayMode(.inline)
-            .onChange(of: selectedPhoto) { _, newValue in
-                guard let newValue else { return }
-
-                Task {
-                    isLoadingImage = true
-                    selectedImageData = try? await newValue.loadTransferable(
-                        type: Data.self
-                    )
-                    isLoadingImage = false
-                }
-            }
-            .alert("AI 服务尚未接入", isPresented: $showAlert) {
-                Button("知道了", role: .cancel) {}
-            } message: {
-                Text("你的文字和图片目前不会发送到 AI，也不会产生模拟回答。等接入真正的 AI 服务后，就可以开始聊天和图片分析。")
+            .task {
+                ai.checkAvailability()
             }
         }
     }
 
-    private func featureRow(
-        _ title: String,
-        detail: String,
-        icon: String
-    ) -> some View {
-        HStack(spacing: 13) {
-            Image(systemName: icon)
-                .font(.system(size: 22))
-                .foregroundStyle(.green)
-                .frame(width: 35)
+    private func sendMessage() {
+        let text = message.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
 
-            VStack(alignment: .leading, spacing: 4) {
-                Text(title)
-                    .font(.subheadline.weight(.semibold))
+        guard !text.isEmpty, !ai.isResponding else {
+            return
+        }
 
-                Text(detail)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+        messages.append(
+            AIChatMessage(
+                text: text,
+                isUser: true
+            )
+        )
+
+        message = ""
+
+        Task {
+            do {
+                let answer = try await ai.send(text: text)
+
+                messages.append(
+                    AIChatMessage(
+                        text: answer,
+                        isUser: false
+                    )
+                )
+
+            } catch {
+                messages.append(
+                    AIChatMessage(
+                        text: "AI 暂时无法回答：\(error.localizedDescription)",
+                        isUser: false
+                    )
+                )
             }
         }
     }
