@@ -3,31 +3,54 @@ import SwiftUI
 import Supabase
 import PhotosUI
 import UIKit
+import MusicKit
+import AVFoundation
+import UniformTypeIdentifiers
 
-// MARK: - 主入口
+// MARK: - 主界面
 
-struct ContentView: View {
-    @State private var isLoggedIn = false
-    @State private var checkingSession = true
+struct MainTabView: View {
+    var onLogout: () -> Void
 
     var body: some View {
-        Group {
-            if checkingSession {
-                ProgressView("正在连接 WeiChat...")
-            } else if isLoggedIn {
-                MainTabView {
-                    isLoggedIn = false
+        TabView {
+            ChatListView()
+                .tabItem {
+                    Image(systemName: "message.fill")
+                    Text("微信")
                 }
-            } else {
-                LoginView {
-                    isLoggedIn = true
+
+            ContactsView()
+                .tabItem {
+                    Image(systemName: "person.2.fill")
+                    Text("通讯录")
                 }
-            }
+
+            DiscoverView()
+                .tabItem {
+                    Image(systemName: "safari")
+                    Text("发现")
+                }
+
+            WeiMusicView()
+                .tabItem {
+                    Image(systemName: "music.note")
+                    Text("音乐")
+                }
+
+            AIAssistantView()
+                .tabItem {
+                    Image(systemName: "sparkles")
+                    Text("AI 助手")
+                }
+
+            ProfileView(onLogout: onLogout)
+                .tabItem {
+                    Image(systemName: "person.fill")
+                    Text("我")
+                }
         }
-        .task {
-            isLoggedIn = await SupabaseManager.shared.hasSession()
-            checkingSession = false
-        }
+        .tint(.green)
     }
 }
 
@@ -1219,4 +1242,662 @@ struct ProfileEditView: View {
             isSaving = false
         }
     }
+}
+
+// MARK: - WeiChat 音乐中心
+
+struct WeiMusicView: View {
+    @State private var authorizationStatus = MusicAuthorization.currentStatus
+
+    @State private var searchText = ""
+    @State private var searchResults: [Song] = []
+    @State private var librarySongs: [Song] = []
+
+    @State private var isSearching = false
+    @State private var isLoadingLibrary = false
+
+    @State private var localFiles: [URL] = []
+    @State private var currentLocalIndex = 0
+    @State private var currentLocalSong = ""
+    @State private var isLocalPlaying = false
+
+    @State private var showImporter = false
+    @State private var showAlert = false
+    @State private var alertMessage = ""
+
+    private let musicPlayer = ApplicationMusicPlayer.shared
+
+    var body: some View {
+        NavigationStack {
+            List {
+                // Apple Music 授权
+                Section {
+                    HStack(spacing: 12) {
+                        Image(systemName: "apple.logo")
+                            .font(.system(size: 30))
+
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text("Apple Music")
+                                .font(.headline)
+
+                            Text(authorizationText)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Spacer()
+
+                        if authorizationStatus == .authorized {
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundStyle(.green)
+                        } else {
+                            Button("授权") {
+                                requestAuthorization()
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(.green)
+                        }
+                    }
+                    .padding(.vertical, 6)
+                }
+
+                // 在线搜索
+                Section("在线音乐") {
+                    HStack {
+                        Image(systemName: "magnifyingglass")
+                            .foregroundStyle(.secondary)
+
+                        TextField("搜索歌曲或歌手", text: $searchText)
+                            .submitLabel(.search)
+                            .onSubmit {
+                                searchMusic()
+                            }
+
+                        Button {
+                            searchMusic()
+                        } label: {
+                            Image(systemName: "arrow.right")
+                                .foregroundStyle(.green)
+                        }
+                        .disabled(searchText.trimmingCharacters(in: .whitespaces).isEmpty)
+                    }
+
+                    if isSearching {
+                        HStack {
+                            Spacer()
+                            ProgressView("正在搜索音乐...")
+                            Spacer()
+                        }
+                    }
+
+                    ForEach(searchResults, id: \.id) { song in
+                        songRow(song)
+                    }
+
+                    if searchResults.isEmpty && !isSearching {
+                        Text("搜索你喜欢的歌曲和歌手")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                // 音乐资料库
+                Section {
+                    HStack {
+                        Text("我的音乐资料库")
+                            .font(.headline)
+
+                        Spacer()
+
+                        Button("刷新") {
+                            loadLibrary()
+                        }
+                        .font(.caption)
+                        .foregroundStyle(.green)
+                    }
+
+                    if isLoadingLibrary {
+                        ProgressView("正在读取音乐资料库...")
+                    } else if librarySongs.isEmpty {
+                        Text("授权后可以读取你的音乐资料库")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(librarySongs, id: \.id) { song in
+                            songRow(song)
+                        }
+                    }
+                }
+
+                // 本地音乐
+                Section("iPhone 本地音乐") {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text("本地音频文件")
+                                .font(.headline)
+
+                            Text("已导入 \(localFiles.count) 首")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Spacer()
+
+                        Button {
+                            showImporter = true
+                        } label: {
+                            Label("导入音乐", systemImage: "plus")
+                                .font(.subheadline)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.green)
+                    }
+
+                    if localFiles.isEmpty {
+                        ContentUnavailableView(
+                            "还没有本地音乐",
+                            systemImage: "music.note",
+                            description: Text("点击导入音乐，选择手机或文件 App 中的音频。")
+                        )
+                        .listRowBackground(Color.clear)
+                    } else {
+                        ForEach(Array(localFiles.enumerated()), id: \.element) { index, url in
+                            Button {
+                                playLocalFile(at: index)
+                            } label: {
+                                HStack(spacing: 12) {
+                                    Image(systemName: "music.note")
+                                        .font(.title2)
+                                        .foregroundStyle(.green)
+
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text(url.deletingPathExtension().lastPathComponent)
+                                            .foregroundStyle(.primary)
+                                            .lineLimit(1)
+
+                                        Text(url.pathExtension.uppercased())
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+
+                                    Spacer()
+
+                                    if currentLocalIndex == index && isLocalPlaying {
+                                        Image(systemName: "waveform")
+                                            .foregroundStyle(.green)
+                                    }
+                                }
+                            }
+                            .buttonStyle(.plain)
+                            .swipeActions {
+                                Button(role: .destructive) {
+                                    deleteLocalFile(at: index)
+                                } label: {
+                                    Label("删除", systemImage: "trash")
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // 正在播放
+                if !currentLocalSong.isEmpty {
+                    Section("正在播放") {
+                        HStack(spacing: 12) {
+                            Image(systemName: "waveform")
+                                .font(.title)
+                                .foregroundStyle(.green)
+
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(currentLocalSong)
+                                    .font(.headline)
+                                    .lineLimit(1)
+
+                                Text("本地音乐")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+
+                            Spacer()
+                        }
+
+                        HStack {
+                            Spacer()
+
+                            Button {
+                                playPrevious()
+                            } label: {
+                                Image(systemName: "backward.end.fill")
+                                    .font(.title2)
+                            }
+
+                            Spacer()
+
+                            Button {
+                                toggleLocalPlayback()
+                            } label: {
+                                Image(systemName: isLocalPlaying ? "pause.circle.fill" : "play.circle.fill")
+                                    .font(.system(size: 42))
+                            }
+
+                            Spacer()
+
+                            Button {
+                                playNext()
+                            } label: {
+                                Image(systemName: "forward.end.fill")
+                                    .font(.title2)
+                            }
+
+                            Spacer()
+                        }
+                        .foregroundStyle(.green)
+                        .padding(.vertical, 8)
+                    }
+                }
+            }
+            .listStyle(.insetGrouped)
+            .navigationTitle("音乐")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        showImporter = true
+                    } label: {
+                        Image(systemName: "folder.badge.plus")
+                    }
+                    .tint(.green)
+                }
+            }
+            .fileImporter(
+                isPresented: $showImporter,
+                allowedContentTypes: [.audio],
+                allowsMultipleSelection: true
+            ) { result in
+                importAudioFiles(result)
+            }
+            .alert("WeiChat 音乐", isPresented: $showAlert) {
+                Button("确定", role: .cancel) {}
+            } message: {
+                Text(alertMessage)
+            }
+            .task {
+                authorizationStatus = MusicAuthorization.currentStatus
+                loadLocalFiles()
+
+                if authorizationStatus == .authorized {
+                    loadLibrary()
+                }
+            }
+        }
+    }
+
+    private var authorizationText: String {
+        switch authorizationStatus {
+        case .authorized:
+            return "已获得音乐访问权限"
+        case .denied:
+            return "访问权限已被拒绝，请在系统设置中检查"
+        case .restricted:
+            return "当前设备限制了音乐访问"
+        case .notDetermined:
+            return "需要授权才能搜索和读取 Apple Music"
+        @unknown default:
+            return "音乐授权状态未知"
+        }
+    }
+
+    // MARK: Apple Music 授权
+
+    private func requestAuthorization() {
+        Task {
+            let status = await MusicAuthorization.request()
+            authorizationStatus = status
+
+            if status == .authorized {
+                loadLibrary()
+            } else {
+                alertMessage = "没有获得 Apple Music 授权。"
+                showAlert = true
+            }
+        }
+    }
+
+    // MARK: 在线搜索
+
+    private func searchMusic() {
+        let keyword = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard !keyword.isEmpty else { return }
+
+        guard authorizationStatus == .authorized else {
+            alertMessage = "请先授权 Apple Music。"
+            showAlert = true
+            return
+        }
+
+        isSearching = true
+        searchResults = []
+
+        Task {
+            do {
+                var request = MusicCatalogSearchRequest(
+                    term: keyword,
+                    types: [Song.self]
+                )
+
+                request.limit = 25
+
+                let response = try await request.response()
+                searchResults = Array(response.songs)
+
+            } catch {
+                alertMessage = "搜索失败：\(error.localizedDescription)"
+                showAlert = true
+            }
+
+            isSearching = false
+        }
+    }
+
+    // MARK: 音乐资料库
+
+    private func loadLibrary() {
+        guard authorizationStatus == .authorized else { return }
+
+        isLoadingLibrary = true
+
+        Task {
+            do {
+                let request = MusicLibraryRequest<Song>()
+                let response = try await request.response()
+
+                librarySongs = Array(response.items.prefix(100))
+
+            } catch {
+                alertMessage = "读取音乐资料库失败：\(error.localizedDescription)"
+                showAlert = true
+            }
+
+            isLoadingLibrary = false
+        }
+    }
+
+    // MARK: 播放 Apple Music
+
+    private func playSong(_ song: Song) {
+        guard authorizationStatus == .authorized else {
+            alertMessage = "请先授权 Apple Music。"
+            showAlert = true
+            return
+        }
+
+        Task {
+            do {
+                musicPlayer.queue = [song]
+                try await musicPlayer.play()
+            } catch {
+                alertMessage = "播放失败：\(error.localizedDescription)"
+                showAlert = true
+            }
+        }
+    }
+
+    // MARK: 歌曲列表
+
+    @ViewBuilder
+    private func songRow(_ song: Song) -> some View {
+        Button {
+            playSong(song)
+        } label: {
+            HStack(spacing: 12) {
+                if let artwork = song.artwork {
+                    ArtworkImage(artwork, width: 48, height: 48)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                } else {
+                    Image(systemName: "music.note")
+                        .font(.title2)
+                        .foregroundStyle(.green)
+                        .frame(width: 48, height: 48)
+                        .background(Color.green.opacity(0.1))
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(song.title)
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+
+                    Text(song.artistName)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+
+                Spacer()
+
+                Image(systemName: "play.circle")
+                    .font(.title2)
+                    .foregroundStyle(.green)
+            }
+            .padding(.vertical, 4)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: 导入本地音频
+
+    private func importAudioFiles(_ result: Result<[URL], Error>) {
+        switch result {
+        case .success(let urls):
+            let fileManager = FileManager.default
+
+            guard let documents = fileManager.urls(
+                for: .documentDirectory,
+                in: .userDomainMask
+            ).first else {
+                alertMessage = "无法访问应用文件目录。"
+                showAlert = true
+                return
+            }
+
+            let musicFolder = documents.appendingPathComponent(
+                "WeiMusic",
+                isDirectory: true
+            )
+
+            do {
+                try fileManager.createDirectory(
+                    at: musicFolder,
+                    withIntermediateDirectories: true
+                )
+
+                var importedCount = 0
+
+                for url in urls {
+                    let accessGranted = url.startAccessingSecurityScopedResource()
+                    defer {
+                        if accessGranted {
+                            url.stopAccessingSecurityScopedResource()
+                        }
+                    }
+
+                    let destination = musicFolder.appendingPathComponent(
+                        url.lastPathComponent
+                    )
+
+                    var finalDestination = destination
+
+                    if fileManager.fileExists(atPath: finalDestination.path) {
+                        let name = url.deletingPathExtension().lastPathComponent
+                        let ext = url.pathExtension
+                        let newName = "\(name)_\(UUID().uuidString.prefix(6)).\(ext)"
+                        finalDestination = musicFolder.appendingPathComponent(newName)
+                    }
+
+                    try fileManager.copyItem(
+                        at: url,
+                        to: finalDestination
+                    )
+
+                    importedCount += 1
+                }
+
+                loadLocalFiles()
+
+                alertMessage = "成功导入 \(importedCount) 个音频文件！"
+                showAlert = true
+
+            } catch {
+                alertMessage = "导入失败：\(error.localizedDescription)"
+                showAlert = true
+            }
+
+        case .failure(let error):
+            alertMessage = "选择文件失败：\(error.localizedDescription)"
+            showAlert = true
+        }
+    }
+
+    // MARK: 读取本地音乐
+
+    private func loadLocalFiles() {
+        guard let documents = FileManager.default.urls(
+            for: .documentDirectory,
+            in: .userDomainMask
+        ).first else {
+            return
+        }
+
+        let musicFolder = documents.appendingPathComponent(
+            "WeiMusic",
+            isDirectory: true
+        )
+
+        do {
+            try FileManager.default.createDirectory(
+                at: musicFolder,
+                withIntermediateDirectories: true
+            )
+
+            let files = try FileManager.default.contentsOfDirectory(
+                at: musicFolder,
+                includingPropertiesForKeys: nil
+            )
+
+            let supportedExtensions = [
+                "mp3", "m4a", "aac", "wav", "aiff", "caf"
+            ]
+
+            localFiles = files
+                .filter {
+                    supportedExtensions.contains(
+                        $0.pathExtension.lowercased()
+                    )
+                }
+                .sorted {
+                    $0.lastPathComponent.localizedStandardCompare(
+                        $1.lastPathComponent
+                    ) == .orderedAscending
+                }
+
+        } catch {
+            alertMessage = "读取本地音乐失败：\(error.localizedDescription)"
+            showAlert = true
+        }
+    }
+
+    // MARK: 本地音乐播放
+
+    private func playLocalFile(at index: Int) {
+        guard localFiles.indices.contains(index) else { return }
+
+        let url = localFiles[index]
+
+        do {
+            try AVAudioSession.sharedInstance().setCategory(
+                .playback,
+                mode: .default
+            )
+
+            try AVAudioSession.sharedInstance().setActive(true)
+
+            let player = AVPlayer(url: url)
+            LocalMusicPlayer.shared.player = player
+
+            player.play()
+
+            currentLocalIndex = index
+            currentLocalSong = url.deletingPathExtension().lastPathComponent
+            isLocalPlaying = true
+
+        } catch {
+            alertMessage = "无法播放该文件：\(error.localizedDescription)"
+            showAlert = true
+        }
+    }
+
+    private func toggleLocalPlayback() {
+        guard let player = LocalMusicPlayer.shared.player else { return }
+
+        if isLocalPlaying {
+            player.pause()
+            isLocalPlaying = false
+        } else {
+            player.play()
+            isLocalPlaying = true
+        }
+    }
+
+    private func playPrevious() {
+        guard !localFiles.isEmpty else { return }
+
+        let previousIndex = max(0, currentLocalIndex - 1)
+        playLocalFile(at: previousIndex)
+    }
+
+    private func playNext() {
+        guard !localFiles.isEmpty else { return }
+
+        let nextIndex = currentLocalIndex + 1
+
+        guard localFiles.indices.contains(nextIndex) else {
+            return
+        }
+
+        playLocalFile(at: nextIndex)
+    }
+
+    // MARK: 删除本地音乐
+
+    private func deleteLocalFile(at index: Int) {
+        guard localFiles.indices.contains(index) else { return }
+
+        let url = localFiles[index]
+
+        if currentLocalIndex == index {
+            LocalMusicPlayer.shared.player?.pause()
+            LocalMusicPlayer.shared.player = nil
+            currentLocalSong = ""
+            isLocalPlaying = false
+        }
+
+        do {
+            try FileManager.default.removeItem(at: url)
+            loadLocalFiles()
+        } catch {
+            alertMessage = "删除失败：\(error.localizedDescription)"
+            showAlert = true
+        }
+    }
+}
+
+// MARK: - 本地音乐播放器
+
+final class LocalMusicPlayer {
+    static let shared = LocalMusicPlayer()
+
+    var player: AVPlayer?
+
+    private init() {}
 }
