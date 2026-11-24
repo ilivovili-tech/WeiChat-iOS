@@ -2,6 +2,8 @@
 import SwiftUI
 import Supabase
 
+// MARK: - 主入口
+
 struct ContentView: View {
     @State private var isLoggedIn = false
     @State private var checkingSession = true
@@ -41,64 +43,84 @@ struct LoginView: View {
     @State private var alertMessage = ""
 
     var body: some View {
-        VStack(spacing: 22) {
-            Spacer()
+        ZStack {
+            LinearGradient(
+                colors: [
+                    Color.green.opacity(0.10),
+                    Color(.systemBackground),
+                    Color(.systemBackground)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            .ignoresSafeArea()
 
-            Image(systemName: "bubble.left.and.bubble.right.fill")
-                .font(.system(size: 65))
-                .foregroundStyle(.green)
+            VStack(spacing: 22) {
+                Spacer()
 
-            Text("WeiChat")
-                .font(.system(size: 34, weight: .bold))
+                Image(systemName: "bubble.left.and.bubble.right.fill")
+                    .font(.system(size: 65))
+                    .foregroundStyle(.green)
 
-            Text(isRegistering ? "创建你的 WeiChat 账号" : "欢迎回来")
-                .foregroundStyle(.secondary)
+                Text("WeiChat")
+                    .font(.system(size: 36, weight: .bold))
 
-            VStack(spacing: 15) {
-                if isRegistering {
-                    TextField("请输入昵称", text: $nickname)
+                Text(isRegistering ? "创建你的 WeiChat 账号" : "欢迎回来")
+                    .foregroundStyle(.secondary)
+
+                VStack(spacing: 15) {
+                    if isRegistering {
+                        TextField("请输入昵称", text: $nickname)
+                            .textContentType(.nickname)
+                            .textFieldStyle(.roundedBorder)
+                    }
+
+                    TextField("邮箱地址", text: $email)
+                        .keyboardType(.emailAddress)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .textContentType(.emailAddress)
+                        .textFieldStyle(.roundedBorder)
+
+                    SecureField("密码", text: $password)
+                        .textContentType(isRegistering ? .newPassword : .password)
                         .textFieldStyle(.roundedBorder)
                 }
+                .padding(18)
+                .glassEffect(
+                    .regular,
+                    in: RoundedRectangle(cornerRadius: 22)
+                )
+                .padding(.horizontal, 25)
 
-                TextField("邮箱地址", text: $email)
-                    .keyboardType(.emailAddress)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .textFieldStyle(.roundedBorder)
-
-                SecureField("密码", text: $password)
-                    .textFieldStyle(.roundedBorder)
-            }
-            .padding(.horizontal, 30)
-
-            Button {
-                submit()
-            } label: {
-                HStack {
-                    if isLoading {
-                        ProgressView().tint(.white)
-                    } else {
-                        Text(isRegistering ? "注册账号" : "登录")
-                            .fontWeight(.semibold)
+                Button {
+                    submit()
+                } label: {
+                    HStack {
+                        if isLoading {
+                            ProgressView()
+                        } else {
+                            Text(isRegistering ? "注册账号" : "登录")
+                                .fontWeight(.semibold)
+                        }
                     }
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 48)
                 }
-                .frame(maxWidth: .infinity)
-                .frame(height: 50)
-                .background(Color.green)
-                .foregroundStyle(.white)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
-            }
-            .disabled(isLoading)
-            .padding(.horizontal, 30)
+                .buttonStyle(.glassProminent)
+                .tint(.green)
+                .disabled(isLoading)
+                .padding(.horizontal, 30)
 
-            Button(isRegistering ? "已有账号？立即登录" : "没有账号？立即注册") {
-                isRegistering.toggle()
-            }
-            .foregroundStyle(.green)
+                Button(isRegistering ? "已有账号？立即登录" : "没有账号？立即注册") {
+                    isRegistering.toggle()
+                }
+                .foregroundStyle(.green)
 
-            Spacer()
+                Spacer()
+            }
+            .padding()
         }
-        .padding()
         .alert("WeiChat 提示", isPresented: $showAlert) {
             Button("确定", role: .cancel) {}
         } message: {
@@ -213,18 +235,41 @@ struct ChatListView: View {
         NavigationStack {
             List {
                 Section {
-                    HStack {
-                        TextField("搜索用户名或微信号", text: $search)
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
-
-                        Button {
-                            searchUsers()
-                        } label: {
+                    GlassEffectContainer(spacing: 12) {
+                        HStack(spacing: 12) {
                             Image(systemName: "magnifyingglass")
-                                .foregroundStyle(.green)
+                                .foregroundStyle(.secondary)
+
+                            TextField("搜索用户名或微信号", text: $search)
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled()
+                                .submitLabel(.search)
+                                .onSubmit {
+                                    searchUsers()
+                                }
+
+                            Button {
+                                searchUsers()
+                            } label: {
+                                Image(systemName: "arrow.right")
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .foregroundStyle(.green)
+                                    .frame(width: 35, height: 35)
+                            }
+                            .buttonStyle(.glass)
                         }
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        .glassEffect(
+                            .regular,
+                            in: RoundedRectangle(cornerRadius: 18)
+                        )
                     }
+                    .listRowInsets(
+                        EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16)
+                    )
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
                 }
 
                 if isSearching {
@@ -233,6 +278,7 @@ struct ChatListView: View {
                         ProgressView("正在搜索...")
                         Spacer()
                     }
+                    .listRowBackground(Color.clear)
                 }
 
                 if !users.isEmpty {
@@ -258,9 +304,12 @@ struct ChatListView: View {
                                     Spacer()
 
                                     Image(systemName: "chevron.right")
-                                        .foregroundStyle(.secondary)
+                                        .foregroundStyle(.tertiary)
                                 }
+                                .padding(.vertical, 5)
+                                .contentShape(Rectangle())
                             }
+                            .buttonStyle(.plain)
                             .disabled(isSearching)
                         }
                     }
@@ -270,7 +319,7 @@ struct ChatListView: View {
                     if sessions.isEmpty {
                         VStack(spacing: 12) {
                             Image(systemName: "bubble.left.and.bubble.right")
-                                .font(.system(size: 38))
+                                .font(.system(size: 42))
                                 .foregroundStyle(.secondary)
 
                             Text("还没有聊天记录")
@@ -310,13 +359,21 @@ struct ChatListView: View {
                     }
                 }
             }
-            .listStyle(.plain)
+            .listStyle(.insetGrouped)
+            .scrollContentBackground(.hidden)
+            .background(Color(.systemGroupedBackground))
             .navigationTitle("微信")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Image(systemName: "plus.circle")
-                        .font(.title3)
-                        .foregroundStyle(.green)
+                    Button {
+                        search = ""
+                        users = []
+                    } label: {
+                        Image(systemName: "plus")
+                            .font(.system(size: 17, weight: .semibold))
+                    }
+                    .buttonStyle(.glass)
+                    .tint(.green)
                 }
             }
             .alert("WeiChat 提示", isPresented: $showError) {
@@ -344,7 +401,6 @@ struct ChatListView: View {
                 )
 
                 let currentID = try await SupabaseManager.shared.currentUserID()
-
                 users = results.filter { $0.id != currentID }
             } catch {
                 errorMessage = error.localizedDescription
@@ -410,12 +466,12 @@ struct ChatDetailView: View {
                                     Text(item.content)
                                         .padding(12)
                                         .background(Color.green.opacity(0.22))
-                                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                                        .clipShape(RoundedRectangle(cornerRadius: 14))
                                 } else {
                                     Text(item.content)
                                         .padding(12)
                                         .background(Color.gray.opacity(0.15))
-                                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                                        .clipShape(RoundedRectangle(cornerRadius: 14))
 
                                     Spacer(minLength: 55)
                                 }
@@ -434,30 +490,44 @@ struct ChatDetailView: View {
                 }
             }
 
-            Divider()
+            GlassEffectContainer(spacing: 12) {
+                HStack(spacing: 12) {
+                    TextField("发送消息...", text: $message, axis: .vertical)
+                        .lineLimit(1...4)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 10)
 
-            HStack(spacing: 10) {
-                TextField("发送消息...", text: $message, axis: .vertical)
-                    .lineLimit(1...4)
-                    .padding(10)
-                    .background(Color.gray.opacity(0.1))
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
-
-                Button {
-                    sendMessage()
-                } label: {
-                    if isSending {
-                        ProgressView()
-                    } else {
-                        Text("发送")
-                            .fontWeight(.semibold)
+                    Button {
+                        sendMessage()
+                    } label: {
+                        if isSending {
+                            ProgressView()
+                                .frame(width: 42, height: 42)
+                        } else {
+                            Image(systemName: "arrow.up")
+                                .font(.system(size: 18, weight: .bold))
+                                .foregroundStyle(.white)
+                                .frame(width: 42, height: 42)
+                                .background(.green, in: Circle())
+                        }
                     }
+                    .buttonStyle(.plain)
+                    .disabled(
+                        isSending ||
+                        message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    )
                 }
-                .foregroundStyle(.green)
-                .disabled(isSending || message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .padding(6)
+                .glassEffect(
+                    .regular,
+                    in: RoundedRectangle(cornerRadius: 24)
+                )
             }
-            .padding()
+            .padding(.horizontal)
+            .padding(.vertical, 10)
+            .background(.bar)
         }
+        .background(Color(.systemGroupedBackground))
         .navigationTitle(name)
         .navigationBarTitleDisplayMode(.inline)
         .task {
@@ -499,7 +569,6 @@ struct ChatDetailView: View {
 
     private func sendMessage() {
         let text = message.trimmingCharacters(in: .whitespacesAndNewlines)
-
         guard !text.isEmpty else { return }
 
         isSending = true
@@ -536,6 +605,9 @@ struct ContactsView: View {
                         .foregroundStyle(.green)
                 }
             }
+            .listStyle(.insetGrouped)
+            .scrollContentBackground(.hidden)
+            .background(Color(.systemGroupedBackground))
             .navigationTitle("通讯录")
         }
     }
@@ -555,6 +627,9 @@ struct DiscoverView: View {
                 Label("搜一搜", systemImage: "magnifyingglass")
                 Label("附近的人", systemImage: "location")
             }
+            .listStyle(.insetGrouped)
+            .scrollContentBackground(.hidden)
+            .background(Color(.systemGroupedBackground))
             .navigationTitle("发现")
         }
     }
@@ -608,6 +683,9 @@ struct ProfileView: View {
                     }
                 }
             }
+            .listStyle(.insetGrouped)
+            .scrollContentBackground(.hidden)
+            .background(Color(.systemGroupedBackground))
             .navigationTitle("我")
         }
     }
