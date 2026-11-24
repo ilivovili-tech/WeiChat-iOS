@@ -242,8 +242,6 @@ struct AIAssistantView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-
-                // AI 状态
                 HStack(spacing: 8) {
                     Image(systemName: "sparkles")
                         .foregroundStyle(.green)
@@ -261,7 +259,6 @@ struct AIAssistantView: View {
                 .padding(.horizontal, 16)
                 .padding(.vertical, 10)
 
-                // 聊天内容
                 ScrollViewReader { proxy in
                     ScrollView {
                         if messages.isEmpty {
@@ -341,7 +338,6 @@ struct AIAssistantView: View {
                     }
                 }
 
-                // 输入框
                 HStack(spacing: 12) {
                     TextField(
                         "向 WeiChat AI 提问...",
@@ -419,7 +415,6 @@ struct AIAssistantView: View {
                         isUser: false
                     )
                 )
-
             } catch {
                 messages.append(
                     AIChatMessage(
@@ -942,7 +937,11 @@ struct ProfileView: View {
                             .foregroundStyle(.primary)
                     }
 
-                    Label("设置", systemImage: "gearshape")
+                    NavigationLink {
+                        WeiChatRegionSettingsView()
+                    } label: {
+                        Label("地区设置", systemImage: "globe.asia.australia")
+                    }
                 }
 
                 Section {
@@ -1036,8 +1035,6 @@ struct ProfileView: View {
         }
     }
 
-    // MARK: 读取资料（处理任务取消）
-
     private func loadProfile() async {
         do {
             let result = try await SupabaseManager.shared.fetchMyProfile()
@@ -1056,8 +1053,6 @@ struct ProfileView: View {
         guard !Task.isCancelled else { return }
         isLoading = false
     }
-
-    // MARK: 上传头像
 
     private func uploadSelectedPhoto(_ item: PhotosPickerItem) async {
         isUploading = true
