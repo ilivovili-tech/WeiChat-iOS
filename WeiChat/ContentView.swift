@@ -6,6 +6,7 @@ import UIKit
 import MusicKit
 import AVFoundation
 import UniformTypeIdentifiers
+import MediaPlayer
 
 // MARK: - 主入口
 
@@ -1654,31 +1655,48 @@ struct WeiMusicView: View {
         }
     }
 
-    // MARK: 播放 Apple Music
+   
+// MARK: 播放 Apple Music
 
-    private func playSong(_ song: Song) {
-        guard authorizationStatus == .authorized else {
-            alertMessage = "请先授权 Apple Music。"
-            showAlert = true
+private func playSong(_ song: Song) {
+    guard authorizationStatus == .authorized else {
+        alertMessage = "请先授权 Apple Music。"
+        showAlert = true
+        return
+    }
+
+    // 停止本地音乐
+    LocalMusicPlayer.shared.stop()
+
+    isLocalPlaying = false
+    currentLocalIndex = -1
+    currentLocalSong = ""
+
+    Task {
+        do {
+            musicPlayer.queue = [song]
+            try await musicPlayer.play()
+
+        } catch is CancellationError {
+            // 播放请求被取消，不提示错误
             return
-        }
 
-        LocalMusicPlayer.shared.stop()
+        } catch {
+            let nsError = error as NSError
 
-        isLocalPlaying = false
-        currentLocalIndex = -1
-        currentLocalSong = ""
-
-        Task {
-            do {
-                musicPlayer.queue = [song]
-                try await musicPlayer.play()
-            } catch {
-                alertMessage = "播放失败：\(error.localizedDescription)"
-                showAlert = true
+            // 忽略播放器的 error 2，避免播放成功后仍弹出失败提示
+            if nsError.domain == MPMusicPlayerControllerErrorDomain &&
+                nsError.code == 2 {
+                return
             }
+
+            // 其他真正的播放错误仍然提示
+            alertMessage = "播放失败：\(error.localizedDescription)"
+            showAlert = true
         }
     }
+}
+
 
     // MARK: 在线歌曲列表
 
