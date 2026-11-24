@@ -2,12 +2,27 @@
 import Foundation
 import Supabase
 
+// MARK: - 用户模型
+
 struct WeiChatUser: Codable, Identifiable {
     let id: UUID
     let username: String?
     let nickname: String?
     let wechat_id: String?
 }
+
+// MARK: - 个人资料模型
+
+struct WeiChatProfile: Codable, Identifiable {
+    let id: UUID
+    var username: String?
+    var nickname: String?
+    var avatar_url: String?
+    var wechat_id: String?
+    var bio: String?
+}
+
+// MARK: - 聊天消息模型
 
 struct WeiChatMessage: Codable, Identifiable {
     let id: UUID
@@ -17,6 +32,8 @@ struct WeiChatMessage: Codable, Identifiable {
     let message_type: String
     let created_at: Date
 }
+
+// MARK: - Supabase 管理器
 
 @MainActor
 final class SupabaseManager {
@@ -79,10 +96,88 @@ final class SupabaseManager {
         return session.user.id
     }
 
+    // MARK: - 获取个人资料
+
+    func fetchMyProfile() async throws -> WeiChatProfile? {
+        let userID = try await currentUserID()
+
+        let profiles: [WeiChatProfile] = try await client
+            .from("profiles")
+            .select("id, username, nickname, avatar_url, wechat_id, bio")
+            .eq("id", value: userID.uuidString)
+            .limit(1)
+            .execute()
+            .value
+
+        return profiles.first
+    }
+
+    // MARK: - 修改个人资料
+
+    func updateMyProfile(
+        nickname: String,
+        wechatID: String,
+        bio: String
+    ) async throws {
+        let userID = try await currentUserID()
+
+        let update = ProfileUpdate(
+            nickname: nickname,
+            wechat_id: wechatID.isEmpty ? nil : wechatID,
+            bio: bio,
+            updated_at: Date()
+        )
+
+        try await client
+            .from("profiles")
+            .update(update)
+            .eq("id", value: userID.uuidString)
+            .execute()
+    }
+
+    // MARK: - 上传头像
+
+    func uploadAvatar(imageData: Data) async throws -> String {
+        let userID = try await currentUserID()
+
+        let fileName = UUID().uuidString + ".jpg"
+        let path = "\(userID.uuidString)/\(fileName)"
+
+        try await client.storage
+            .from("avatars")
+            .upload(
+                path: path,
+                file: imageData,
+                options: FileOptions(
+                    contentType: "image/jpeg",
+                    upsert: false
+                )
+            )
+
+        let publicURL = try client.storage
+            .from("avatars")
+            .getPublicURL(path: path)
+
+        let update = AvatarUpdate(
+            avatar_url: publicURL.absoluteString,
+            updated_at: Date()
+        )
+
+        try await client
+            .from("profiles")
+            .update(update)
+            .eq("id", value: userID.uuidString)
+            .execute()
+
+        return publicURL.absoluteString
+    }
+
     // MARK: - 搜索用户
 
     func searchUsers(keyword: String) async throws -> [WeiChatUser] {
-        let word = keyword.trimmingCharacters(in: .whitespacesAndNewlines)
+        let word = keyword.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
 
         guard !word.isEmpty else {
             return []
@@ -121,7 +216,10 @@ final class SupabaseManager {
         return try await client
             .from("messages")
             .select()
-            .eq("conversation_id", value: conversationID.uuidString)
+            .eq(
+                "conversation_id",
+                value: conversationID.uuidString
+            )
             .order("created_at", ascending: true)
             .execute()
             .value
@@ -155,6 +253,20 @@ final class SupabaseManager {
             .insert(newMessage)
             .execute()
     }
+}
+
+// MARK: - 数据更新模型
+
+private struct ProfileUpdate: Encodable {
+    let nickname: String
+    let wechat_id: String?
+    let bio: String
+    let updated_at: Date
+}
+
+private struct AvatarUpdate: Encodable {
+    let avatar_url: String
+    let updated_at: Date
 }
 
 private struct NewWeiChatMessage: Encodable {
