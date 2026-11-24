@@ -1,4 +1,3 @@
-
 name: WeiChat
 
 options:
@@ -26,6 +25,7 @@ targets:
         PRODUCT_NAME: WeiChat
         INFOPLIST_KEY_CFBundleDisplayName: WeiChat
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_NSAppleMusicUsageDescription: "WeiChat 需要访问 Apple Music，以便搜索、读取和播放音乐。"
         SWIFT_VERSION: "5.0"
         TARGETED_DEVICE_FAMILY: "1,2"
         GENERATE_INFOPLIST_FILE: YES
