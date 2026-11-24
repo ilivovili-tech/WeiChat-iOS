@@ -1,6 +1,8 @@
 
 import SwiftUI
 import Supabase
+import PhotosUI
+import UIKit
 
 // MARK: - 主入口
 
@@ -637,49 +639,108 @@ struct DiscoverView: View {
 
 // MARK: - 我的
 
+
 struct ProfileView: View {
     var onLogout: () -> Void
+
+    @State private var profile: WeiChatProfile?
+    @State private var selectedPhoto: PhotosPickerItem?
+
+    @State private var isLoading = true
+    @State private var isUploading = false
+    @State private var showEditor = false
+    @State private var showAlert = false
+    @State private var alertMessage = ""
 
     var body: some View {
         NavigationStack {
             List {
-                HStack(spacing: 18) {
-                    Image(systemName: "person.crop.square.fill")
-                        .font(.system(size: 65))
-                        .foregroundStyle(.green)
+                // MARK: 个人资料
 
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("WeiChat 用户")
-                            .font(.title2.bold())
+                Section {
+                    HStack(spacing: 18) {
+                        avatarView
+                            .frame(width: 76, height: 76)
+                            .clipShape(RoundedRectangle(cornerRadius: 15))
 
-                        Text("欢迎使用 WeiChat")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .padding(.vertical, 15)
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text(profile?.nickname ?? "WeiChat 用户")
+                                .font(.title2.bold())
 
-                Label("服务", systemImage: "creditcard")
-                Label("收藏", systemImage: "star")
-                Label("朋友圈", systemImage: "photo")
-                Label("卡包", systemImage: "wallet.pass")
-                Label("表情", systemImage: "face.smiling")
-                Label("设置", systemImage: "gearshape")
+                            Text("微信号：\(profile?.wechat_id ?? "未设置")")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
 
-                Button(role: .destructive) {
-                    Task {
-                        do {
-                            try await SupabaseManager.shared.signOut()
-                            onLogout()
-                        } catch {
-                            print("退出登录失败：\(error)")
+                            Text(profile?.bio ?? "欢迎使用 WeiChat")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(2)
                         }
+
+                        Spacer()
+
+                        Image(systemName: "chevron.right")
+                            .foregroundStyle(.tertiary)
                     }
-                } label: {
-                    HStack {
-                        Spacer()
-                        Text("退出登录")
-                        Spacer()
+                    .padding(.vertical, 12)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        showEditor = true
+                    }
+
+                    PhotosPicker(
+                        selection: $selectedPhoto,
+                        matching: .images
+                    ) {
+                        Label(
+                            isUploading ? "正在上传头像..." : "更换个人头像",
+                            systemImage: "camera"
+                        )
+                        .foregroundStyle(.green)
+                    }
+                    .disabled(isUploading)
+                }
+
+                // MARK: 个人功能
+
+                Section {
+                    Label("服务", systemImage: "creditcard")
+                    Label("收藏", systemImage: "star")
+                    Label("朋友圈", systemImage: "photo")
+                    Label("卡包", systemImage: "wallet.pass")
+                    Label("表情", systemImage: "face.smiling")
+                }
+
+                Section {
+                    Button {
+                        showEditor = true
+                    } label: {
+                        Label("编辑个人资料", systemImage: "person.crop.circle")
+                            .foregroundStyle(.primary)
+                    }
+
+                    Label("设置", systemImage: "gearshape")
+                }
+
+                // MARK: 退出登录
+
+                Section {
+                    Button(role: .destructive) {
+                        Task {
+                            do {
+                                try await SupabaseManager.shared.signOut()
+                                onLogout()
+                            } catch {
+                                alertMessage = error.localizedDescription
+                                showAlert = true
+                            }
+                        }
+                    } label: {
+                        HStack {
+                            Spacer()
+                            Text("退出登录")
+                            Spacer()
+                        }
                     }
                 }
             }
@@ -687,6 +748,251 @@ struct ProfileView: View {
             .scrollContentBackground(.hidden)
             .background(Color(.systemGroupedBackground))
             .navigationTitle("我")
+            .overlay {
+                if isLoading {
+                    ProgressView("正在加载个人资料...")
+                }
+            }
+            .task {
+                await loadProfile()
+            }
+            .onChange(of: selectedPhoto) { _, newValue in
+                guard let newValue else { return }
+
+                Task {
+                    await uploadSelectedPhoto(newValue)
+                }
+            }
+            .sheet(isPresented: $showEditor) {
+                if let profile {
+                    ProfileEditView(profile: profile) {
+                        Task {
+                            await loadProfile()
+                        }
+                    }
+                } else {
+                    NavigationStack {
+                        ContentUnavailableView(
+                            "暂时无法读取个人资料",
+                            systemImage: "person.crop.circle.badge.exclamationmark",
+                            description: Text("请检查 profiles 表是否存在当前用户的资料记录。")
+                        )
+                        .toolbar {
+                            ToolbarItem(placement: .topBarTrailing) {
+                                Button("关闭") {
+                                    showEditor = false
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            .alert("WeiChat 提示", isPresented: $showAlert) {
+                Button("确定", role: .cancel) {}
+            } message: {
+                Text(alertMessage)
+            }
+        }
+    }
+
+    // MARK: 头像显示
+
+    @ViewBuilder
+    private var avatarView: some View {
+        if let urlString = profile?.avatar_url,
+           let url = URL(string: urlString) {
+            AsyncImage(url: url) { image in
+                image
+                    .resizable()
+                    .scaledToFill()
+            } placeholder: {
+                ProgressView()
+            }
+        } else {
+            Image(systemName: "person.crop.square.fill")
+                .resizable()
+                .scaledToFit()
+                .foregroundStyle(.green)
+                .padding(5)
+        }
+    }
+
+    // MARK: 读取资料
+
+    private func loadProfile() async {
+        do {
+            profile = try await SupabaseManager.shared.fetchMyProfile()
+        } catch {
+            alertMessage = error.localizedDescription
+            showAlert = true
+        }
+
+        isLoading = false
+    }
+
+    // MARK: 上传头像
+
+    private func uploadSelectedPhoto(_ item: PhotosPickerItem) async {
+        isUploading = true
+
+        do {
+            guard let data = try await item.loadTransferable(type: Data.self) else {
+                throw NSError(
+                    domain: "WeiChat",
+                    code: 1,
+                    userInfo: [
+                        NSLocalizedDescriptionKey: "无法读取所选图片"
+                    ]
+                )
+            }
+
+            guard let image = UIImage(data: data),
+                  let compressedData = image.jpegData(compressionQuality: 0.8) else {
+                throw NSError(
+                    domain: "WeiChat",
+                    code: 2,
+                    userInfo: [
+                        NSLocalizedDescriptionKey: "图片格式无法处理"
+                    ]
+                )
+            }
+
+            _ = try await SupabaseManager.shared.uploadAvatar(
+                imageData: compressedData
+            )
+
+            await loadProfile()
+
+            alertMessage = "头像上传成功！"
+            showAlert = true
+
+        } catch {
+            alertMessage = "头像上传失败：\(error.localizedDescription)"
+            showAlert = true
+        }
+
+        isUploading = false
+        selectedPhoto = nil
+    }
+}
+
+// MARK: - 编辑个人资料
+
+struct ProfileEditView: View {
+    let profile: WeiChatProfile
+    var onSaved: () -> Void
+
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var nickname = ""
+    @State private var wechatID = ""
+    @State private var bio = ""
+
+    @State private var isSaving = false
+    @State private var showAlert = false
+    @State private var alertMessage = ""
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("基本资料") {
+                    TextField("昵称", text: $nickname)
+                        .textInputAutocapitalization(.never)
+
+                    TextField("微信号", text: $wechatID)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("个人简介")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+
+                        TextField(
+                            "介绍一下自己...",
+                            text: $bio,
+                            axis: .vertical
+                        )
+                        .lineLimit(3...5)
+                    }
+                }
+
+                Section {
+                    Text("修改后的资料将保存到 WeiChat 云端数据库。")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .navigationTitle("编辑资料")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("取消") {
+                        dismiss()
+                    }
+                }
+
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        saveProfile()
+                    } label: {
+                        if isSaving {
+                            ProgressView()
+                        } else {
+                            Text("保存")
+                                .fontWeight(.semibold)
+                        }
+                    }
+                    .disabled(isSaving)
+                }
+            }
+            .onAppear {
+                nickname = profile.nickname ?? ""
+                wechatID = profile.wechat_id ?? ""
+                bio = profile.bio ?? ""
+            }
+            .alert("WeiChat 提示", isPresented: $showAlert) {
+                Button("确定", role: .cancel) {}
+            } message: {
+                Text(alertMessage)
+            }
+        }
+    }
+
+    private func saveProfile() {
+        let cleanNickname = nickname.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+
+        guard !cleanNickname.isEmpty else {
+            alertMessage = "昵称不能为空。"
+            showAlert = true
+            return
+        }
+
+        isSaving = true
+
+        Task {
+            do {
+                try await SupabaseManager.shared.updateMyProfile(
+                    nickname: cleanNickname,
+                    wechatID: wechatID.trimmingCharacters(
+                        in: .whitespacesAndNewlines
+                    ),
+                    bio: bio.trimmingCharacters(
+                        in: .whitespacesAndNewlines
+                    )
+                )
+
+                onSaved()
+                dismiss()
+
+            } catch {
+                alertMessage = "保存失败：\(error.localizedDescription)"
+                showAlert = true
+            }
+
+            isSaving = false
         }
     }
 }
