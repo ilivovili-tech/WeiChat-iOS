@@ -1,7 +1,6 @@
 
-import Foundation
+import SwiftUI
 import FoundationModels
-import UIKit
 
 @MainActor
 final class WeiChatAIManager: ObservableObject {
@@ -14,35 +13,33 @@ final class WeiChatAIManager: ObservableObject {
 
     private lazy var session = LanguageModelSession(
         instructions: """
-        你是 WeiChat AI 助手。
-        请使用简体中文回答用户。
+        你是 WeiChat 的 AI 助手。
+        请优先使用简体中文回答。
         语气自然、友好、有帮助。
-        尽量清楚、准确地回答问题。
-        如果不知道答案，请诚实说明。
+        尽量准确、清楚地回答问题。
+        不确定的事情要诚实说明，不要编造事实。
         """
     )
 
     func checkAvailability() {
-        if case .available = model.availability {
+        switch model.availability {
+        case .available:
             isAvailable = true
             status = "本地 AI 已就绪"
-        } else {
+
+        case .unavailable(let reason):
             isAvailable = false
-            status = "本地 AI 尚未就绪，请检查 Apple Intelligence 设置或模型下载状态。"
+            status = "本地 AI 暂不可用：\(reason)"
         }
     }
 
-    func send(
-        text: String,
-        image: UIImage?
-    ) async throws -> String {
-
+    func send(text: String) async throws -> String {
         guard !isResponding else {
             throw NSError(
                 domain: "WeiChatAI",
                 code: 1,
                 userInfo: [
-                    NSLocalizedDescriptionKey: "AI 正在回答，请稍等。"
+                    NSLocalizedDescriptionKey: "AI 正在回答，请稍候。"
                 ]
             )
         }
@@ -60,38 +57,11 @@ final class WeiChatAIManager: ObservableObject {
         }
 
         isResponding = true
-        defer { isResponding = false }
-
-        if let image {
-            guard let cgImage = image.cgImage else {
-                throw NSError(
-                    domain: "WeiChatAI",
-                    code: 3,
-                    userInfo: [
-                        NSLocalizedDescriptionKey: "无法读取这张图片。"
-                    ]
-                )
-            }
-
-            if #available(iOS 27.0, *) {
-                let response = try await session.respond {
-                    text.isEmpty ? "请分析这张图片。" : text
-                    Attachment(cgImage)
-                }
-
-                return response.content
-            } else {
-                throw NSError(
-                    domain: "WeiChatAI",
-                    code: 4,
-                    userInfo: [
-                        NSLocalizedDescriptionKey: "图片理解需要 iOS 27 或更新版本。"
-                    ]
-                )
-            }
-        } else {
-            let response = try await session.respond(to: text)
-            return response.content
+        defer {
+            isResponding = false
         }
+
+        let response = try await session.respond(to: text)
+        return response.content
     }
 }
