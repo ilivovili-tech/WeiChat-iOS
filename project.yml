@@ -6,12 +6,20 @@ options:
   deploymentTarget:
     iOS: "26.0"
 
+packages:
+  Supabase:
+    url: https://github.com/supabase/supabase-swift
+    from: 2.0.0
+
 targets:
   WeiChat:
     type: application
     platform: iOS
     sources:
       - path: WeiChat
+    dependencies:
+      - package: Supabase
+        product: Supabase
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.weichat.studio
