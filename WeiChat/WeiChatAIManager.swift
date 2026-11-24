@@ -13,31 +13,50 @@ final class WeiChatAIManager: ObservableObject {
 
     private let model = SystemLanguageModel.default
 
-    private lazy var session: LanguageModelSession = {
-        LanguageModelSession(
-            instructions: """
-            你是 WeiChat 的 AI 助手。
-            请优先使用简体中文回答。
-            语气自然、友好、有帮助。
-            尽量准确、清楚地回答问题。
-            不确定的事情要诚实说明，不要编造事实。
-            """
-        )
-    }()
+    private lazy var session = LanguageModelSession(
+        instructions: """
+        你是 WeiChat 的 AI 助手。
+        请使用简体中文回答。
+        语气自然、友好、有帮助。
+        尽量准确、清楚地回答问题。
+        不确定的事情要诚实说明，不要编造事实。
+        """
+    )
 
     func checkAvailability() {
-        if model.availability == .available {
+
+        switch model.availability {
+
+        case .available:
             isAvailable = true
             status = "本地 AI 已就绪"
-        } else {
+
+        case .unavailable(let reason):
+
             isAvailable = false
-            status = "本地 AI 暂不可用，请检查 Apple Intelligence 设置和模型下载状态。"
+
+            switch reason {
+
+            case .deviceNotEligible:
+                status = "设备或当前地区不符合 Apple 本地 AI 使用条件。"
+
+            case .appleIntelligenceNotEnabled:
+                status = "请先在设置中开启 Apple Intelligence。"
+
+            case .modelNotReady:
+                status = "Apple AI 模型尚未准备完成，请连接 Wi-Fi 并等待下载。"
+
+            @unknown default:
+                status = "Apple 本地 AI 暂时不可用，请检查系统设置。"
+            }
         }
     }
 
     func send(text: String) async throws -> String {
 
-        let prompt = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let prompt = text.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
 
         guard !prompt.isEmpty else {
             throw NSError(
@@ -72,6 +91,7 @@ final class WeiChatAIManager: ObservableObject {
         }
 
         isResponding = true
+
         defer {
             isResponding = false
         }
