@@ -1,5 +1,6 @@
 
 import SwiftUI
+import Supabase
 
 struct ContentView: View {
     @State private var isLoggedIn = false
@@ -65,7 +66,7 @@ struct LoginView: View {
                     .autocorrectionDisabled()
                     .textFieldStyle(.roundedBorder)
 
-                SecureField("密码（至少 6 位）", text: $password)
+                SecureField("密码", text: $password)
                     .textFieldStyle(.roundedBorder)
             }
             .padding(.horizontal, 30)
@@ -75,8 +76,7 @@ struct LoginView: View {
             } label: {
                 HStack {
                     if isLoading {
-                        ProgressView()
-                            .tint(.white)
+                        ProgressView().tint(.white)
                     } else {
                         Text(isRegistering ? "注册账号" : "登录")
                             .fontWeight(.semibold)
@@ -139,7 +139,7 @@ struct LoginView: View {
                     if await SupabaseManager.shared.hasSession() {
                         onLogin()
                     } else {
-                        alertMessage = "注册成功！请先到邮箱完成验证，再回来登录。"
+                        alertMessage = "注册成功！请先验证邮箱，再回来登录。"
                         showAlert = true
                     }
                 } else {
@@ -194,73 +194,192 @@ struct MainTabView: View {
     }
 }
 
-// MARK: - 聊天列表
+// MARK: - 聊天会话
 
-struct ChatItem: Identifiable {
-    let id = UUID()
+struct ChatSession: Identifiable {
+    let id: UUID
     let name: String
-    let message: String
-    let time: String
-    let icon: String
 }
-
-let sampleChats = [
-    ChatItem(name: "文件传输助手", message: "文件已发送", time: "17:08", icon: "folder.fill"),
-    ChatItem(name: "微信团队", message: "欢迎使用微信", time: "16:30", icon: "message.fill"),
-    ChatItem(name: "好友一号", message: "你好！", time: "昨天", icon: "person.fill"),
-    ChatItem(name: "好友二号", message: "晚上一起吃饭吗？", time: "昨天", icon: "person.fill")
-]
 
 struct ChatListView: View {
     @State private var search = ""
+    @State private var users: [WeiChatUser] = []
+    @State private var sessions: [ChatSession] = []
+    @State private var isSearching = false
+    @State private var errorMessage = ""
+    @State private var showError = false
 
     var body: some View {
         NavigationStack {
             List {
-                ForEach(sampleChats.filter {
-                    search.isEmpty || $0.name.localizedCaseInsensitiveContains(search)
-                }) { chat in
-                    NavigationLink {
-                        ChatDetailView(name: chat.name)
-                    } label: {
-                        HStack(spacing: 12) {
-                            Image(systemName: chat.icon)
-                                .font(.system(size: 25))
-                                .foregroundStyle(.white)
-                                .frame(width: 52, height: 52)
-                                .background(Color.green)
-                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                Section {
+                    HStack {
+                        TextField("搜索用户名或微信号", text: $search)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
 
-                            VStack(alignment: .leading, spacing: 7) {
-                                Text(chat.name)
-                                    .font(.system(size: 17, weight: .medium))
-                                Text(chat.message)
-                                    .font(.system(size: 14))
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(1)
+                        Button {
+                            searchUsers()
+                        } label: {
+                            Image(systemName: "magnifyingglass")
+                                .foregroundStyle(.green)
+                        }
+                    }
+                }
+
+                if isSearching {
+                    HStack {
+                        Spacer()
+                        ProgressView("正在搜索...")
+                        Spacer()
+                    }
+                }
+
+                if !users.isEmpty {
+                    Section("搜索结果") {
+                        ForEach(users) { user in
+                            Button {
+                                openChat(user)
+                            } label: {
+                                HStack(spacing: 12) {
+                                    Image(systemName: "person.crop.circle.fill")
+                                        .font(.system(size: 42))
+                                        .foregroundStyle(.green)
+
+                                    VStack(alignment: .leading, spacing: 5) {
+                                        Text(user.nickname ?? user.username ?? "WeiChat 用户")
+                                            .foregroundStyle(.primary)
+
+                                        Text("微信号：\(user.wechat_id ?? user.username ?? "未设置")")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+
+                                    Spacer()
+
+                                    Image(systemName: "chevron.right")
+                                        .foregroundStyle(.secondary)
+                                }
                             }
+                            .disabled(isSearching)
+                        }
+                    }
+                }
 
-                            Spacer()
+                Section("最近聊天") {
+                    if sessions.isEmpty {
+                        VStack(spacing: 12) {
+                            Image(systemName: "bubble.left.and.bubble.right")
+                                .font(.system(size: 38))
+                                .foregroundStyle(.secondary)
 
-                            Text(chat.time)
-                                .font(.system(size: 12))
+                            Text("还没有聊天记录")
+                                .foregroundStyle(.secondary)
+
+                            Text("搜索用户，开始新的聊天")
+                                .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
-                        .padding(.vertical, 5)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 35)
+                        .listRowSeparator(.hidden)
+                    } else {
+                        ForEach(sessions) { session in
+                            NavigationLink {
+                                ChatDetailView(
+                                    name: session.name,
+                                    conversationID: session.id
+                                )
+                            } label: {
+                                HStack(spacing: 12) {
+                                    Image(systemName: "person.crop.circle.fill")
+                                        .font(.system(size: 45))
+                                        .foregroundStyle(.green)
+
+                                    Text(session.name)
+                                        .font(.system(size: 17))
+
+                                    Spacer()
+
+                                    Text("聊天")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                        }
                     }
                 }
             }
             .listStyle(.plain)
             .navigationTitle("微信")
-            .searchable(text: $search, prompt: "搜索")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button(action: {}) {
-                        Image(systemName: "plus.circle")
-                            .foregroundStyle(.primary)
-                    }
+                    Image(systemName: "plus.circle")
+                        .font(.title3)
+                        .foregroundStyle(.green)
                 }
             }
+            .alert("WeiChat 提示", isPresented: $showError) {
+                Button("确定", role: .cancel) {}
+            } message: {
+                Text(errorMessage)
+            }
+        }
+    }
+
+    private func searchUsers() {
+        let keyword = search.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard !keyword.isEmpty else {
+            users = []
+            return
+        }
+
+        isSearching = true
+
+        Task {
+            do {
+                let results = try await SupabaseManager.shared.searchUsers(
+                    keyword: keyword
+                )
+
+                let currentID = try await SupabaseManager.shared.currentUserID()
+
+                users = results.filter { $0.id != currentID }
+            } catch {
+                errorMessage = error.localizedDescription
+                showError = true
+            }
+
+            isSearching = false
+        }
+    }
+
+    private func openChat(_ user: WeiChatUser) {
+        isSearching = true
+
+        Task {
+            do {
+                let conversationID = try await SupabaseManager.shared
+                    .createPrivateConversation(otherUserID: user.id)
+
+                let name = user.nickname ?? user.username ?? "WeiChat 用户"
+
+                if !sessions.contains(where: { $0.id == conversationID }) {
+                    sessions.insert(
+                        ChatSession(id: conversationID, name: name),
+                        at: 0
+                    )
+                }
+
+                search = ""
+                users = []
+            } catch {
+                errorMessage = error.localizedDescription
+                showError = true
+            }
+
+            isSearching = false
         }
     }
 }
@@ -269,60 +388,152 @@ struct ChatListView: View {
 
 struct ChatDetailView: View {
     let name: String
+    let conversationID: UUID
+
+    @State private var messages: [WeiChatMessage] = []
+    @State private var currentUserID: UUID?
     @State private var message = ""
-    @State private var messages = ["你好！", "欢迎使用 WeiChat"]
+    @State private var isSending = false
+    @State private var errorMessage = ""
+    @State private var showError = false
 
     var body: some View {
-        VStack {
-            ScrollView {
-                VStack(spacing: 16) {
-                    ForEach(messages.indices, id: \.self) { index in
-                        HStack {
-                            Spacer()
-                            Text(messages[index])
-                                .padding(12)
-                                .background(Color.green.opacity(0.2))
-                                .clipShape(RoundedRectangle(cornerRadius: 10))
+        VStack(spacing: 0) {
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(spacing: 15) {
+                        ForEach(messages) { item in
+                            HStack {
+                                if item.sender_id == currentUserID {
+                                    Spacer(minLength: 55)
+
+                                    Text(item.content)
+                                        .padding(12)
+                                        .background(Color.green.opacity(0.22))
+                                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                                } else {
+                                    Text(item.content)
+                                        .padding(12)
+                                        .background(Color.gray.opacity(0.15))
+                                        .clipShape(RoundedRectangle(cornerRadius: 12))
+
+                                    Spacer(minLength: 55)
+                                }
+                            }
+                            .id(item.id)
+                        }
+                    }
+                    .padding()
+                }
+                .onChange(of: messages.count) {
+                    if let last = messages.last {
+                        withAnimation {
+                            proxy.scrollTo(last.id, anchor: .bottom)
                         }
                     }
                 }
-                .padding()
             }
 
-            HStack {
-                TextField("发送消息...", text: $message)
-                    .textFieldStyle(.roundedBorder)
+            Divider()
 
-                Button("发送") {
-                    guard !message.trimmingCharacters(in: .whitespaces).isEmpty else { return }
-                    messages.append(message)
-                    message = ""
+            HStack(spacing: 10) {
+                TextField("发送消息...", text: $message, axis: .vertical)
+                    .lineLimit(1...4)
+                    .padding(10)
+                    .background(Color.gray.opacity(0.1))
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+
+                Button {
+                    sendMessage()
+                } label: {
+                    if isSending {
+                        ProgressView()
+                    } else {
+                        Text("发送")
+                            .fontWeight(.semibold)
+                    }
                 }
                 .foregroundStyle(.green)
+                .disabled(isSending || message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
             .padding()
         }
         .navigationTitle(name)
         .navigationBarTitleDisplayMode(.inline)
+        .task {
+            do {
+                currentUserID = try await SupabaseManager.shared.currentUserID()
+            } catch {
+                errorMessage = error.localizedDescription
+                showError = true
+            }
+
+            while !Task.isCancelled {
+                await loadMessages()
+
+                do {
+                    try await Task.sleep(nanoseconds: 3_000_000_000)
+                } catch {
+                    break
+                }
+            }
+        }
+        .alert("WeiChat 提示", isPresented: $showError) {
+            Button("确定", role: .cancel) {}
+        } message: {
+            Text(errorMessage)
+        }
+    }
+
+    private func loadMessages() async {
+        do {
+            let result = try await SupabaseManager.shared.fetchMessages(
+                conversationID: conversationID
+            )
+            messages = result
+        } catch {
+            errorMessage = error.localizedDescription
+            showError = true
+        }
+    }
+
+    private func sendMessage() {
+        let text = message.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard !text.isEmpty else { return }
+
+        isSending = true
+
+        Task {
+            do {
+                try await SupabaseManager.shared.sendMessage(
+                    conversationID: conversationID,
+                    content: text
+                )
+
+                message = ""
+                await loadMessages()
+            } catch {
+                errorMessage = error.localizedDescription
+                showError = true
+            }
+
+            isSending = false
+        }
     }
 }
 
 // MARK: - 通讯录
 
 struct ContactsView: View {
-    let names = ["新的朋友", "群聊", "标签", "公众号", "好友一号", "好友二号", "好友三号"]
+    let names = ["新的朋友", "群聊", "标签", "公众号"]
 
     var body: some View {
         NavigationStack {
             List {
                 ForEach(names, id: \.self) { name in
-                    HStack(spacing: 15) {
-                        Image(systemName: "person.crop.square.fill")
-                            .font(.system(size: 28))
-                            .foregroundStyle(.green)
-                        Text(name)
-                    }
-                    .padding(.vertical, 5)
+                    Label(name, systemImage: "person.crop.square.fill")
+                        .foregroundStyle(.green)
                 }
             }
             .navigationTitle("通讯录")
@@ -354,9 +565,6 @@ struct DiscoverView: View {
 struct ProfileView: View {
     var onLogout: () -> Void
 
-    @State private var nickname = "WeiChat 用户"
-    @State private var wechatID = "weichat2026"
-
     var body: some View {
         NavigationStack {
             List {
@@ -366,9 +574,10 @@ struct ProfileView: View {
                         .foregroundStyle(.green)
 
                     VStack(alignment: .leading, spacing: 8) {
-                        Text(nickname)
+                        Text("WeiChat 用户")
                             .font(.title2.bold())
-                        Text("微信号：\(wechatID)")
+
+                        Text("欢迎使用 WeiChat")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                     }
