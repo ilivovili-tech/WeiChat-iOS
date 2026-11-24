@@ -41,7 +41,12 @@ final class SupabaseManager {
         try await client.auth.signOut()
     }
 
-    var isLoggedIn: Bool {
-        client.auth.currentUser != nil
+    func hasSession() async -> Bool {
+        do {
+            _ = try await client.auth.session
+            return true
+        } catch {
+            return false
+        }
     }
 }
