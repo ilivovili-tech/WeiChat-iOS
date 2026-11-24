@@ -26,6 +26,8 @@ jobs:
 
       - name: Build iOS App
         run: |
+          set -o pipefail
+
           xcodebuild \
             -project WeiChat.xcodeproj \
             -scheme WeiChat \
@@ -33,7 +35,7 @@ jobs:
             -sdk iphoneos \
             -derivedDataPath build \
             CODE_SIGNING_ALLOWED=NO \
-            build
+            build 2>&1 | tee build.log
 
       - name: Package IPA
         run: |
@@ -47,3 +49,11 @@ jobs:
           name: WeiChat-IPA
           path: WeiChat.ipa
           if-no-files-found: error
+
+      - name: Upload Build Log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: WeiChat-Build-Log
+          path: build.log
+          if-no-files-found: ignore
