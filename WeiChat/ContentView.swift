@@ -1484,18 +1484,9 @@ searchButton
                                 )
                                 .tint(.green)
 
-                                HStack {
-    let currentTimeText: String = formatTime(currentTime)
-    let durationText: String = formatTime(duration)
-
-    Text(currentTimeText)
-
-    Spacer()
-
-    Text(durationText)
-
-}
-}
+                                
+                                playbackTimeLabels
+                            }
 
 
                             HStack {
