@@ -1485,13 +1485,15 @@ searchButton
                                 .tint(.green)
 
                                 HStack {
-                                    Text(formatTime(currentTime))
-                                    Spacer()
-                                    Text(formatTime(duration))
-                                }
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                            }
+    let currentTimeText: String = formatTime(currentTime)
+    let durationText: String = formatTime(duration)
+
+    Text(currentTimeText)
+
+    Spacer()
+
+    Text(durationText)
+}
 
                             HStack {
                                 Button {
