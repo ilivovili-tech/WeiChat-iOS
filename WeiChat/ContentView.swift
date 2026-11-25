@@ -1493,7 +1493,10 @@ searchButton
     Spacer()
 
     Text(durationText)
+
 }
+}
+
 
                             HStack {
                                 Button {
