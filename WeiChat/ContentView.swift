@@ -1643,6 +1643,7 @@ searchButton
             }
         }
     }
+
 // MARK: 搜索按钮（拆分视图，避免编译器类型检查超时）
 
 private var searchButton: some View {
@@ -2191,7 +2192,17 @@ private var searchButton: some View {
             showAlert = true
         }
     }
+// MARK: 播放时间显示
+private var playbackTimeLabels: some View {
+    let currentTimeText = formatTime(currentTime)
+    let durationText = formatTime(duration)
 
+    return HStack {
+        Text(currentTimeText)
+        Spacer()
+        Text(durationText)
+    }
+}
     // MARK: 时间格式
 
     private func formatTime(_ seconds: Double) -> String {
