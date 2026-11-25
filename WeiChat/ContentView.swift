@@ -1226,6 +1226,8 @@ struct ProfileEditView: View {
 
 
  
+
+
  // MARK: - WeiChat 音乐中心
 
 struct WeiMusicView: View {
@@ -1283,8 +1285,6 @@ struct WeiMusicView: View {
     var body: some View {
         NavigationStack {
             List {
-                // MARK: Apple Music
-
                 Section {
                     HStack(spacing: 12) {
                         Image(systemName: "apple.logo")
@@ -1314,8 +1314,6 @@ struct WeiMusicView: View {
                     }
                     .padding(.vertical, 6)
                 }
-
-                // MARK: 在线音乐
 
                 Section("在线音乐") {
                     HStack {
@@ -1360,8 +1358,6 @@ struct WeiMusicView: View {
                     }
                 }
 
-                // MARK: Apple Music 资料库
-
                 Section {
                     HStack {
                         Text("我的音乐资料库")
@@ -1390,8 +1386,6 @@ struct WeiMusicView: View {
                     }
                 }
 
-                // MARK: 本地音乐
-
                 Section("iPhone 本地音乐") {
                     HStack {
                         VStack(alignment: .leading, spacing: 5) {
@@ -1418,71 +1412,20 @@ struct WeiMusicView: View {
                         ContentUnavailableView(
                             "还没有本地音乐",
                             systemImage: "music.note",
-                            description: Text("从文件 App 导入 MP3、M4A、AAC、WAV 等音频。")
+                            description: Text(
+                                "从文件 App 导入 MP3、M4A、AAC、WAV 等音频。"
+                            )
                         )
                         .listRowBackground(Color.clear)
                     } else {
-                        ForEach(Array(localFiles.enumerated()), id: \.element) { index, url in
-                            Button {
-                                playLocalFile(at: index)
-                            } label: {
-                                HStack(spacing: 12) {
-                                    ZStack {
-                                        RoundedRectangle(cornerRadius: 10)
-                                            .fill(Color.green.opacity(0.12))
-                                            .frame(width: 48, height: 48)
-
-                                        Image(
-                                            systemName: currentLocalIndex == index && isLocalPlaying
-                                                ? "waveform"
-                                                : "music.note"
-                                        )
-                                        .font(.title2)
-                                        .foregroundStyle(.green)
-                                    }
-
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        Text(
-                                            url.deletingPathExtension()
-                                                .lastPathComponent
-                                        )
-                                        .foregroundStyle(.primary)
-                                        .lineLimit(1)
-
-                                        Text(url.pathExtension.uppercased())
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                    }
-
-                                    Spacer()
-
-                                    if currentLocalIndex == index {
-                                        Image(
-                                            systemName: isLocalPlaying
-                                                ? "speaker.wave.2.fill"
-                                                : "pause.circle"
-                                        )
-                                        .foregroundStyle(.green)
-                                    } else {
-                                        Image(systemName: "play.circle")
-                                            .foregroundStyle(.secondary)
-                                    }
-                                }
-                                .contentShape(Rectangle())
-                            }
-                            .buttonStyle(.plain)
-                            .swipeActions {
-                                Button(role: .destructive) {
-                                    deleteLocalFile(at: index)
-                                } label: {
-                                    Label("删除", systemImage: "trash")
-                                }
-                            }
+                        ForEach(
+                            Array(localFiles.enumerated()),
+                            id: \.element
+                        ) { index, url in
+                            localSongRow(index: index, url: url)
                         }
                     }
                 }
-
-                // MARK: 播放器
 
                 if currentLocalURL != nil {
                     Section("正在播放") {
@@ -1516,15 +1459,19 @@ struct WeiMusicView: View {
                                 Text(currentLocalSong)
                                     .font(.headline)
                                     .lineLimit(1)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .frame(
+                                        maxWidth: .infinity,
+                                        alignment: .leading
+                                    )
 
                                 Text(isLocalPlaying ? "正在播放" : "已暂停")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .frame(
+                                        maxWidth: .infinity,
+                                        alignment: .leading
+                                    )
                             }
-
-                            // 进度条
 
                             VStack(spacing: 5) {
                                 Slider(
@@ -1549,16 +1496,12 @@ struct WeiMusicView: View {
 
                                 HStack {
                                     Text(formatTime(currentTime))
-
                                     Spacer()
-
                                     Text(formatTime(duration))
                                 }
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
                             }
-
-                            // 播放控制
 
                             HStack {
                                 Button {
@@ -1619,8 +1562,6 @@ struct WeiMusicView: View {
                             .foregroundStyle(.green)
                             .padding(.vertical, 8)
 
-                            // 音量控制
-
                             HStack(spacing: 10) {
                                 Image(systemName: "speaker.fill")
                                     .foregroundStyle(.secondary)
@@ -1661,6 +1602,8 @@ struct WeiMusicView: View {
             .onReceive(progressTimer) { _ in
                 guard !isSeeking else { return }
 
+                localPlayer.updateProgress()
+
                 currentTime = localPlayer.currentTime
                 duration = localPlayer.duration
                 isLocalPlaying = localPlayer.isPlaying
@@ -1687,12 +1630,79 @@ struct WeiMusicView: View {
             .task {
                 authorizationStatus = MusicAuthorization.currentStatus
                 loadLocalFiles()
-
                 localPlayer.configure()
+
+                // 连接锁屏和耳机的下一首控制
+                localPlayer.onNext = {
+                    playNext()
+                }
+
+                // 连接锁屏和耳机的上一首控制
+                localPlayer.onPrevious = {
+                    playPrevious()
+                }
 
                 if authorizationStatus == .authorized {
                     loadLibrary()
                 }
+            }
+        }
+    }
+
+    // MARK: 本地音乐列表单行视图
+
+    private func localSongRow(index: Int, url: URL) -> some View {
+        let fileName = url.deletingPathExtension().lastPathComponent
+        let fileType = url.pathExtension.uppercased()
+
+        let isCurrentSong = currentLocalIndex == index
+        let iconName = isCurrentSong && isLocalPlaying
+            ? "waveform"
+            : "music.note"
+
+        let statusIcon = isCurrentSong
+            ? (isLocalPlaying ? "speaker.wave.2.fill" : "pause.circle")
+            : "play.circle"
+
+        return Button {
+            playLocalFile(at: index)
+        } label: {
+            HStack(spacing: 12) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(Color.green.opacity(0.12))
+                        .frame(width: 48, height: 48)
+
+                    Image(systemName: iconName)
+                        .font(.title2)
+                        .foregroundStyle(.green)
+                }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(fileName)
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+
+                    Text(fileType)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                Image(systemName: statusIcon)
+                    .foregroundStyle(
+                        isCurrentSong ? .green : .secondary
+                    )
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .swipeActions {
+            Button(role: .destructive) {
+                deleteLocalFile(at: index)
+            } label: {
+                Label("删除", systemImage: "trash")
             }
         }
     }
@@ -1717,7 +1727,6 @@ struct WeiMusicView: View {
     private func requestAuthorization() {
         Task {
             let status = await MusicAuthorization.request()
-
             authorizationStatus = status
 
             if status == .authorized {
@@ -1757,7 +1766,6 @@ struct WeiMusicView: View {
                 request.limit = 25
 
                 let response = try await request.response()
-
                 searchResults = Array(response.songs)
 
             } catch {
@@ -1864,7 +1872,6 @@ struct WeiMusicView: View {
     private func importAudioFiles(_ result: Result<[URL], Error>) {
         switch result {
         case .success(let urls):
-
             guard !urls.isEmpty else { return }
 
             let fileManager = FileManager.default
@@ -1899,9 +1906,7 @@ struct WeiMusicView: View {
                             to: musicFolder,
                             fileManager: fileManager
                         )
-
                         importedCount += 1
-
                     } catch {
                         failures.append(
                             "\(sourceURL.lastPathComponent)：\(error.localizedDescription)"
@@ -1944,7 +1949,6 @@ struct WeiMusicView: View {
         to folder: URL,
         fileManager: FileManager
     ) throws {
-
         let accessGranted = source.startAccessingSecurityScopedResource()
 
         defer {
@@ -1963,7 +1967,6 @@ struct WeiMusicView: View {
             options: [],
             error: &coordinationError
         ) { readableURL in
-
             do {
                 let ext = readableURL.pathExtension.lowercased()
 
@@ -1984,7 +1987,6 @@ struct WeiMusicView: View {
                 }
 
                 let originalName = readableURL.lastPathComponent
-
                 var destination = folder.appendingPathComponent(originalName)
 
                 if fileManager.fileExists(atPath: destination.path) {
@@ -1992,7 +1994,6 @@ struct WeiMusicView: View {
                         .lastPathComponent
 
                     let newName = "\(name)_\(UUID().uuidString.prefix(8)).\(ext)"
-
                     destination = folder.appendingPathComponent(newName)
                 }
 
@@ -2038,9 +2039,7 @@ struct WeiMusicView: View {
 
             let files = try FileManager.default.contentsOfDirectory(
                 at: folder,
-                includingPropertiesForKeys: [
-                    .isRegularFileKey
-                ]
+                includingPropertiesForKeys: [.isRegularFileKey]
             )
 
             let supported = [
@@ -2076,7 +2075,6 @@ struct WeiMusicView: View {
 
             currentLocalIndex = index
             isLocalPlaying = true
-
             currentTime = 0
             duration = localPlayer.duration
 
@@ -2170,7 +2168,6 @@ struct WeiMusicView: View {
                 isLocalPlaying = false
                 currentTime = 0
                 duration = 0
-
             } else if index < currentLocalIndex {
                 currentLocalIndex -= 1
             }
@@ -2207,7 +2204,6 @@ struct WeiMusicView: View {
     }
 }
 
-
 // MARK: - 本地音乐播放器
 
 final class LocalMusicPlayer: ObservableObject {
@@ -2221,6 +2217,10 @@ final class LocalMusicPlayer: ObservableObject {
     var player: AVPlayer?
 
     private var remoteCommandsConfigured = false
+
+    // 由音乐界面设置，供锁屏切歌使用
+    var onNext: (() -> Void)?
+    var onPrevious: (() -> Void)?
 
     private init() {}
 
@@ -2249,21 +2249,17 @@ final class LocalMusicPlayer: ObservableObject {
         configure()
 
         let asset = AVURLAsset(url: url)
-
         let item = AVPlayerItem(asset: asset)
-
         let newPlayer = AVPlayer(playerItem: item)
 
         newPlayer.volume = player?.volume ?? 1
 
         player?.pause()
-
         player = newPlayer
 
         newPlayer.play()
 
         isPlaying = true
-
         currentTime = 0
         duration = 0
 
@@ -2274,12 +2270,12 @@ final class LocalMusicPlayer: ObservableObject {
         Task {
             do {
                 let loadedDuration = try await asset.load(.duration)
-
                 let seconds = CMTimeGetSeconds(loadedDuration)
 
                 if seconds.isFinite {
                     await MainActor.run {
                         self.duration = seconds
+                        self.updateNowPlayingDuration()
                     }
                 }
             } catch {
@@ -2300,16 +2296,20 @@ final class LocalMusicPlayer: ObservableObject {
             player.play()
             isPlaying = true
         }
+
+        updatePlaybackRate()
     }
 
     func play() {
         player?.play()
         isPlaying = true
+        updatePlaybackRate()
     }
 
     func pause() {
         player?.pause()
         isPlaying = false
+        updatePlaybackRate()
     }
 
     // MARK: 停止
@@ -2345,6 +2345,7 @@ final class LocalMusicPlayer: ObservableObject {
         )
 
         currentTime = safeSeconds
+        updateNowPlayingElapsedTime()
     }
 
     // MARK: 音量
@@ -2367,26 +2368,61 @@ final class LocalMusicPlayer: ObservableObject {
         if let item = player.currentItem {
             let total = CMTimeGetSeconds(item.duration)
 
-            if total.isFinite {
+            if total.isFinite && total > 0 {
                 duration = total
             }
         }
 
         isPlaying = player.timeControlStatus == .playing
+
+        updateNowPlayingElapsedTime()
+        updatePlaybackRate()
+    }
+
+    // MARK: 锁屏播放时长
+
+    private func updateNowPlayingDuration() {
+        guard var info = MPNowPlayingInfoCenter.default().nowPlayingInfo else {
+            return
+        }
+
+        info[MPMediaItemPropertyPlaybackDuration] = duration
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+    }
+
+    // MARK: 锁屏播放进度
+
+    private func updateNowPlayingElapsedTime() {
+        guard var info = MPNowPlayingInfoCenter.default().nowPlayingInfo else {
+            return
+        }
+
+        info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = currentTime
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+    }
+
+    // MARK: 锁屏播放状态
+
+    private func updatePlaybackRate() {
+        guard var info = MPNowPlayingInfoCenter.default().nowPlayingInfo else {
+            return
+        }
+
+        info[MPNowPlayingInfoPropertyPlaybackRate] = isPlaying ? 1.0 : 0.0
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = info
     }
 
     // MARK: 锁屏信息
 
     private func updateNowPlayingInfo(title: String) {
-        var info: [String: Any] = [
+        let info: [String: Any] = [
             MPMediaItemPropertyTitle: title,
             MPMediaItemPropertyArtist: "WeiChat 本地音乐",
             MPMediaItemPropertyAlbumTitle: "WeiMusic",
-            MPNowPlayingInfoPropertyPlaybackRate: 1.0,
-            MPNowPlayingInfoPropertyElapsedPlaybackTime: 0
+            MPMediaItemPropertyPlaybackRate: 1.0,
+            MPNowPlayingInfoPropertyElapsedPlaybackTime: 0,
+            MPMediaItemPropertyPlaybackDuration: duration
         ]
-
-        info[MPMediaItemPropertyPlaybackDuration] = duration
 
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
     }
@@ -2422,6 +2458,24 @@ final class LocalMusicPlayer: ObservableObject {
             return .success
         }
 
+        center.nextTrackCommand.addTarget { [weak self] _ in
+            guard let self, let onNext = self.onNext else {
+                return .commandFailed
+            }
+
+            onNext()
+            return .success
+        }
+
+        center.previousTrackCommand.addTarget { [weak self] _ in
+            guard let self, let onPrevious = self.onPrevious else {
+                return .commandFailed
+            }
+
+            onPrevious()
+            return .success
+        }
+
         center.changePlaybackPositionCommand.addTarget {
             [weak self] event in
 
@@ -2430,11 +2484,7 @@ final class LocalMusicPlayer: ObservableObject {
             }
 
             self?.seek(to: positionEvent.positionTime)
-
             return .success
         }
-
-        // 下一首和上一首由界面播放器负责切换。
-        // 没有注册虚假的切歌处理器。
     }
 }
