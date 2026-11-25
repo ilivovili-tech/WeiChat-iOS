@@ -1326,17 +1326,7 @@ struct WeiMusicView: View {
                                 searchMusic()
                             }
 
-                        Button {
-                            searchMusic()
-                        } label: {
-                            Image(systemName: "arrow.right")
-                                .foregroundStyle(.green)
-                        }
-                        .disabled(
-                            searchText.trimmingCharacters(
-                                in: .whitespacesAndNewlines
-                            ).isEmpty || isSearching
-                        )
+searchButton
                     }
 
                     if isSearching {
@@ -1648,7 +1638,19 @@ struct WeiMusicView: View {
             }
         }
     }
+// MARK: 搜索按钮（拆分视图，避免编译器类型检查超时）
 
+private var searchButton: some View {
+    let isSearchDisabled = searchText
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+        .isEmpty || isSearching
+
+    return Button(action: searchMusic) {
+        Image(systemName: "arrow.right")
+            .foregroundStyle(Color.green)
+    }
+    .disabled(isSearchDisabled)
+}
     // MARK: 本地音乐列表单行视图
 
     private func localSongRow(index: Int, url: URL) -> some View {
@@ -2419,7 +2421,7 @@ final class LocalMusicPlayer: ObservableObject {
             MPMediaItemPropertyTitle: title,
             MPMediaItemPropertyArtist: "WeiChat 本地音乐",
             MPMediaItemPropertyAlbumTitle: "WeiMusic",
-            MPMediaItemPropertyPlaybackRate: 1.0,
+            MPNowPlayingInfoPropertyPlaybackRate: 1.0,
             MPNowPlayingInfoPropertyElapsedPlaybackTime: 0,
             MPMediaItemPropertyPlaybackDuration: duration
         ]
